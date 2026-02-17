@@ -1,0 +1,122 @@
+name: macOS Desktop Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      notarize:
+        description: Run notarization + stapling for DMG/app
+        required: false
+        default: false
+        type: boolean
+      run_tests:
+        description: Run unit/integration/e2e tests before build
+        required: false
+        default: true
+        type: boolean
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run lint
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_tests }}
+        run: npm run lint
+
+      - name: Run template quality audit
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_tests }}
+        run: npm run templates:audit
+
+      - name: Run test suites
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_tests }}
+        run: npm test
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust crates
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      - name: Build Tauri app (.app + .dmg)
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run desktop:tauri:build
+
+      - name: Resolve bundle paths
+        id: bundle_paths
+        run: |
+          set -euo pipefail
+          DMG_PATH="$(ls -1 src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -n 1 || true)"
+          APP_PATH="$(ls -1d src-tauri/target/release/bundle/macos/*.app 2>/dev/null | head -n 1 || true)"
+          echo "dmg_path=${DMG_PATH}" >> "$GITHUB_OUTPUT"
+          echo "app_path=${APP_PATH}" >> "$GITHUB_OUTPUT"
+
+      - name: Notarize + staple app artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.notarize }}
+        env:
+          NOTARYTOOL_KEYCHAIN_PROFILE: ${{ secrets.NOTARYTOOL_KEYCHAIN_PROFILE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${{ steps.bundle_paths.outputs.dmg_path }}" ]]; then
+            echo "No DMG found for notarization."
+            exit 1
+          fi
+          chmod +x scripts/macos_notarize_and_staple.sh
+          ./scripts/macos_notarize_and_staple.sh "${{ steps.bundle_paths.outputs.dmg_path }}" "${{ steps.bundle_paths.outputs.app_path }}"
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          CHECKSUM_FILE="src-tauri/target/release/bundle/checksums.txt"
+          mkdir -p "$(dirname "$CHECKSUM_FILE")"
+          : > "$CHECKSUM_FILE"
+          if [[ -n "${{ steps.bundle_paths.outputs.dmg_path }}" ]]; then
+            shasum -a 256 "${{ steps.bundle_paths.outputs.dmg_path }}" >> "$CHECKSUM_FILE"
+          fi
+          if [[ -n "${{ steps.bundle_paths.outputs.app_path }}" ]]; then
+            APP_ZIP="${{ steps.bundle_paths.outputs.app_path }}.zip"
+            ditto -c -k --sequesterRsrc --keepParent "${{ steps.bundle_paths.outputs.app_path }}" "$APP_ZIP"
+            shasum -a 256 "$APP_ZIP" >> "$CHECKSUM_FILE"
+          fi
+          cat "$CHECKSUM_FILE"
+
+      - name: Upload macOS bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lapaas-ai-editor-macos
+          if-no-files-found: warn
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app
+            src-tauri/target/release/bundle/macos/*.app.zip
+            src-tauri/target/release/bundle/checksums.txt

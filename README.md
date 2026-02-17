@@ -1,54 +1,101 @@
-# Remotion video
+# Lapaas AI Editor
 
-<p align="center">
-  <a href="https://github.com/remotion-dev/logo">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/remotion-dev/logo/raw/main/animated-logo-banner-dark.apng">
-      <img alt="Animated Remotion Logo" src="https://github.com/remotion-dev/logo/raw/main/animated-logo-banner-light.gif">
-    </picture>
-  </a>
-</p>
+AI agentic video editor for macOS with:
+- local-first AI pipelines (with optional API fallback),
+- microsecond transcript + rough-cut planning,
+- template/media enrichment flow,
+- timeline review/editing,
+- final render pipeline.
 
-Welcome to your Remotion project!
+Built with Remotion + Tauri for efficient desktop performance on Apple Silicon (Metal-optimized path).
 
-## Commands
+## Project Structure
 
-**Install Dependencies**
-
-```console
-npm i
+```text
+desktop/      Desktop shell UI, backend bridge, runtime data
+docs/         PRD, ADRs, audit reports, task tracker
+scripts/      CLI pipelines (start-editing, edit-now, render, diagnostics, cleanup)
+src/          Remotion compositions, templates, shared UI/lib code
+src-tauri/    Native Tauri wrapper commands/config
+tests/        Unit, integration, and e2e workflow tests
 ```
 
-**Start Preview**
+## Quick Start
 
-```console
+```bash
+npm install
 npm run dev
 ```
 
-**Render video**
+## Core Commands
 
-```console
-npx remotion render
+### Quality and Tests
+
+```bash
+npm run verify
+npm run templates:check
+npm run templates:audit
+npm test
 ```
 
-**Upgrade Remotion**
+### AI/Desktop Pipeline CLIs
 
-```console
-npx remotion upgrade
+```bash
+npm run models:discover
+npm run models:health
+npm run start:editing -- --project-id proj-123 --input /path/to/video.mp4 --mode hybrid --language en --fps 30 --source-ref source-video
+npm run edit:now -- --project-id proj-123 --fps 30 --source-ref source-video
+npm run render:video -- --project-id proj-123 --output-name final-export.mp4 --burn-subtitles true --quality balanced
 ```
 
-## Docs
+### Desktop Runtime
 
-Get started with Remotion by reading the [fundamentals page](https://www.remotion.dev/docs/the-fundamentals).
+```bash
+npm run desktop:backend
+npm run desktop:tauri:dev
+npm run desktop:tauri:build
+```
 
-## Help
+### Diagnostics and Release Checks
 
-We provide help on our [Discord server](https://discord.gg/6VzzNDwUwV).
+```bash
+npm run diagnostics:hardware
+npm run checks:first-run
+npm run release:check
+npm run release:verify
+```
 
-## Issues
+### Workspace Cleanup
 
-Found an issue with Remotion? [File an issue here](https://github.com/remotion-dev/remotion/issues/new).
+```bash
+npm run clean:workspace
+npm run clean:workspace -- --dry-run
+npm run clean:workspace -- --all-project-data
+```
 
-## License
+## macOS Packaging
 
-Note that for some entities a company license is needed. [Read the terms here](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md).
+Notarization + stapling helper:
+
+```bash
+./scripts/macos_notarize_and_staple.sh /path/to/Lapaas_AI_Editor.dmg /path/to/Lapaas\ AI\ Editor.app
+```
+
+Credential options:
+- `NOTARYTOOL_KEYCHAIN_PROFILE` (recommended), or
+- `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`.
+
+## Documentation
+
+- `CHANGELOG.md`
+- `docs/README.md`
+- `docs/agentic-video-editor-prd.md`
+- `docs/task-list.md`
+- `docs/template-audit-baseline.md`
+- `docs/release-checklist.md`
+
+## Platform Support (v1)
+
+- Primary: macOS Apple Silicon (`darwin/arm64`) with Metal acceleration.
+- Secondary: macOS Intel (`darwin/x64`) with reduced performance.
+- Unsupported: non-macOS desktop distribution targets.

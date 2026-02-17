@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "{\"transcription\": [{\"text\":\"Mock transcription output from local whisper\",\"offsets\":{\"from\":0,\"to\":5000}}]}" > "$7.json"

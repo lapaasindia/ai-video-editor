@@ -1,33 +1,76 @@
 {
-  "name": "AI Video Editor",
+  "name": "lapaas-ai-editor",
   "version": "1.0.0",
-  "description": "My Remotion video",
+  "description": "Lapaas AI Editor - macOS AI agentic video editor built with Remotion + Tauri",
   "repository": {},
   "license": "UNLICENSED",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
+    "@remotion/animated-emoji": "4.0.421",
+    "@remotion/animation-utils": "4.0.421",
     "@remotion/cli": "4.0.421",
+    "@remotion/fonts": "4.0.421",
+    "@remotion/gif": "4.0.421",
+    "@remotion/google-fonts": "^4.0.421",
+    "@remotion/shapes": "4.0.421",
+    "@remotion/tailwind-v4": "4.0.421",
+    "@remotion/transitions": "4.0.421",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.6.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "remotion": "4.0.421",
-    "@remotion/tailwind-v4": "4.0.421",
-    "tailwindcss": "4.0.0"
+    "tailwindcss": "4.0.0",
+    "zod": "^3.22.3"
   },
   "devDependencies": {
     "@remotion/eslint-config-flat": "4.0.421",
+    "@types/node": "^25.2.3",
     "@types/react": "19.2.7",
+    "@types/react-dom": "^19.2.3",
     "@types/web": "0.0.166",
+    "@vitejs/plugin-react": "^5.1.4",
     "eslint": "9.19.0",
     "prettier": "3.6.0",
-    "typescript": "5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
   },
   "scripts": {
     "dev": "remotion studio",
     "build": "remotion bundle",
     "upgrade": "remotion upgrade",
-    "lint": "eslint src && tsc"
+    "verify": "npm run lint && npm run templates:audit && npm test",
+    "lint": "eslint src && tsc",
+    "test": "npm run templates:check && npm run test:unit && npm run test:integration && npm run test:e2e",
+    "test:unit": "node --test tests/unit/**/*.test.mjs",
+    "test:integration": "node --test tests/integration/**/*.test.mjs",
+    "test:e2e": "node --test tests/e2e/**/*.test.mjs",
+    "models:discover": "node scripts/model_runtime_discovery.mjs --pretty",
+    "models:health": "node scripts/model_runtime_health.mjs",
+    "models:install": "node scripts/model_runtime_install.mjs",
+    "templates:check": "node scripts/check_template_registration.mjs",
+    "templates:audit": "node scripts/template_quality_audit.mjs",
+    "clean:workspace": "node scripts/clean_workspace.mjs",
+    "diagnostics:hardware": "node scripts/hardware_diagnostics.mjs",
+    "checks:first-run": "node scripts/first_run_checks.mjs",
+    "release:check": "node scripts/release_readiness_check.mjs",
+    "release:verify": "npm run verify && npm run release:check",
+    "media:ingest": "node scripts/media_ingest.mjs",
+    "start:editing": "node scripts/start_editing_pipeline.mjs",
+    "edit:now": "node scripts/edit_now_pipeline.mjs",
+    "render:video": "node scripts/render_pipeline.mjs",
+    "desktop:backend": "node desktop/backend/server.mjs",
+    "dev:app": "vite",
+    "build:app": "tsc -p tsconfig.app.json && vite build",
+    "preview:app": "vite preview",
+    "desktop:tauri:dev": "cd src-tauri && cargo tauri dev",
+    "desktop:tauri:build": "cargo tauri build --manifest-path src-tauri/Cargo.toml"
   },
   "sideEffects": [
-    "*.css"
+    "*.css",
+    "./src/templates/**/*.tsx"
   ]
 }
