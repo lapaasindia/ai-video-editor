@@ -51,10 +51,14 @@ export const useTauri = () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: route.body ? JSON.stringify(route.body) : undefined
                 });
-                if (!response.ok) throw new Error(response.statusText);
+                if (!response.ok) {
+                    const errBody = await response.text();
+                    console.error(`[useTauri] ${cmd} HTTP ${response.status}:`, errBody);
+                    throw new Error(errBody || response.statusText);
+                }
                 return await response.json();
             } catch (e) {
-                console.error(`Fetch fallback for ${cmd} failed:`, e);
+                console.error(`[useTauri] ${cmd} failed:`, e);
                 throw e;
             }
         }

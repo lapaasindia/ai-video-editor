@@ -278,45 +278,89 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || !currentProject) return;
+        if (!file) return;
 
-        setStatusWrapper('processing', `Uploading ${file.name}...`);
-        logger.log(`Starting upload for file: ${file.name} `);
+        if (!currentProject) {
+            alert('Please create a project first');
+            return;
+        }
+
+        const tempId = `media-${Date.now()}`;
+        const mediaName = file.name;
+
+        // Show item immediately as processing
+        setMedia(prev => [...prev, {
+            id: tempId,
+            path: mediaName,
+            name: mediaName,
+            type: 'video' as const,
+            status: 'processing' as const
+        }]);
+        setStatusWrapper('processing', `Uploading ${mediaName}...`);
+        logger.log(`Starting upload for file: ${mediaName}`);
 
         try {
-            const uploadUrl = 'http://localhost:43123/media/upload';
-            logger.debug(`POST request to ${uploadUrl} `);
-
-            const response = await fetch(uploadUrl, {
+            // Step 1: Upload file to server
+            const uploadResponse = await fetch('http://localhost:43123/media/upload', {
                 method: 'POST',
-                headers: {
-                    'x-filename': file.name
-                },
+                headers: { 'x-filename': file.name },
                 body: file
             });
 
-            if (!response.ok) {
-                const text = await response.text();
-                throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${text} `);
+            if (!uploadResponse.ok) {
+                const text = await uploadResponse.text();
+                throw new Error(`Upload failed (${uploadResponse.status}): ${text}`);
             }
 
-            const result = await response.json();
-            logger.log('Upload successful', result);
+            const uploadResult = await uploadResponse.json();
+            logger.log('Upload successful', uploadResult);
 
-            if (result.ok && result.path) {
-                // Call importMedia with the path on the server
-                await importMedia(result.path);
-            } else {
-                throw new Error('Upload response missing "path"');
+            if (!uploadResult.ok || !uploadResult.path) {
+                throw new Error('Upload response missing path');
             }
+
+            // Step 2: Ingest the uploaded file
+            setStatusWrapper('processing', `Processing ${mediaName}...`);
+            logger.log(`Ingesting from: ${uploadResult.path}`);
+
+            const ingestResponse = await fetch('http://localhost:43123/media/ingest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: currentProject.id,
+                    input: uploadResult.path,
+                    generateProxy: false,
+                    generateWaveform: false
+                })
+            });
+
+            if (!ingestResponse.ok) {
+                const text = await ingestResponse.text();
+                throw new Error(`Ingest failed (${ingestResponse.status}): ${text}`);
+            }
+
+            const ingestResult = await ingestResponse.json();
+            logger.log('Ingest successful', ingestResult);
+
+            const duration = ingestResult.media?.durationSec;
+            setMedia(prev => prev.map(item =>
+                item.id === tempId
+                    ? { ...item, path: uploadResult.path, status: 'ok' as const, duration }
+                    : item
+            ));
+            setStatusWrapper('ready', `Imported: ${mediaName}`);
+
         } catch (error: any) {
-            setStatusWrapper('error', `Upload failed: ${error.message} `);
-            logger.error('Upload Error', error);
-            console.error(error);
+            logger.error('Import Error', error);
+            console.error('Import failed:', error);
+            setMedia(prev => prev.map(item =>
+                item.id === tempId ? { ...item, status: 'error' as const } : item
+            ));
+            setStatusWrapper('error', `Import failed: ${error.message}`);
         } finally {
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
-    }, [currentProject, setStatusWrapper, importMedia]);
+    }, [currentProject, setStatusWrapper]);
 
     const seekTo = useCallback((time: number) => {
         setCurrentTime(time);
