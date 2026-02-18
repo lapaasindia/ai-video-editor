@@ -96,6 +96,10 @@ export const ProjectPanel: React.FC = () => {
                                             <div className="media-icon">
                                                 {item.status === 'processing' ? (
                                                     <div className="spinner-small" title="Processing..."></div>
+                                                ) : item.status === 'error' ? (
+                                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" strokeWidth="2">
+                                                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                                                    </svg>
                                                 ) : (
                                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                         <path d="M15 10l5 5-5 5" />
@@ -103,7 +107,8 @@ export const ProjectPanel: React.FC = () => {
                                                     </svg>
                                                 )}
                                             </div>
-                                            <span className="media-name" title={item.path}>{item.name}</span>
+                                            <span className="media-name" title={item.path} style={item.status === 'error' ? { color: '#e74c3c' } : {}}>{item.name}</span>
+                                            {item.status === 'error' && <span className="media-badge" title="Import failed" style={{ background: '#e74c3c' }}>!</span>}
                                             {item.proxyPath && <span className="media-badge" title="Proxy Ready">P</span>}
                                         </div>
                                     ))

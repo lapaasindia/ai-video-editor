@@ -172,86 +172,75 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return;
         }
 
-        try {
-            let filePath: string | null = path || null;
+        let filePath: string | null = path || null;
 
-            // If no path provided, open dialog
-            if (!filePath) {
-                if (isTauri) {
-                    try {
+        // If no path provided, open dialog
+        if (!filePath) {
+            if (isTauri) {
+                try {
+                    // @ts-ignore
+                    const { open } = await import('@tauri-apps/plugin-dialog');
+                    const selected = await open({
+                        multiple: false,
+                        filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] }]
+                    });
+                    if (selected) filePath = selected as string;
+                } catch (e) {
+                    // @ts-ignore
+                    if (window.__TAURI__?.dialog) {
                         // @ts-ignore
-                        const { open } = await import('@tauri-apps/plugin-dialog');
-                        const selected = await open({
+                        filePath = await window.__TAURI__.dialog.open({
                             multiple: false,
                             filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] }]
                         });
-                        if (selected) filePath = selected as string;
-                    } catch (e) {
-                        // Fallback for v1 or if plugin not found, try direct global
-                        // @ts-ignore
-                        if (window.__TAURI__?.dialog) {
-                            // @ts-ignore
-                            filePath = await window.__TAURI__.dialog.open({
-                                multiple: false,
-                                filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] }]
-                            });
-                        }
-                    }
-                } else {
-                    // Browser fallback
-                    if (fileInputRef.current) {
-                        fileInputRef.current.click();
-                        return;
                     }
                 }
+            } else {
+                // Browser: trigger file input, actual import happens in handleFileUpload
+                if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                    return;
+                }
             }
+        }
 
+        if (!filePath) return;
 
-            if (!filePath) return;
+        // Declare tempId outside try so catch can reference it
+        const tempId = `media-${Date.now()}`;
+        setMedia(prev => [...prev, {
+            id: tempId,
+            path: filePath!,
+            name: filePath!.split(/[/\\]/).pop() || 'media',
+            type: 'video',
+            status: 'processing'
+        }]);
+        setStatusWrapper('processing', 'Importing media...');
 
-            // Optimistic update
-            const tempId = `media - ${Date.now()} `;
-            const newItem: MediaItem = {
-                id: tempId,
-                path: filePath,
-                name: filePath.split(/[/\\]/).pop() || 'media',
-                type: 'video',
-                status: 'processing'
-            };
-            setMedia(prev => [...prev, newItem]);
-
-            setStatusWrapper('processing', 'Importing media...');
-
-            // Call backend
+        try {
             const result = await invokeCommand<any>('ingest_media', {
                 request: {
                     projectId: currentProject.id,
                     input: filePath,
-                    generateProxy: true,
-                    generateWaveform: true
+                    generateProxy: false,
+                    generateWaveform: false
                 }
             });
 
-            // Update with result
-            setMedia(prev => prev.map(item => {
-                if (item.id === tempId) {
-                    return {
-                        ...item,
-                        status: 'ok',
-                        proxyPath: result.proxyPath || undefined,
-                        waveformPath: result.waveformPath || undefined,
-                        duration: result.metadata?.duration
-                    };
-                }
-                return item;
-            }));
-
-            setStatusWrapper('ready', 'Media imported');
+            const duration = result.media?.durationSec || result.metadata?.duration;
+            setMedia(prev => prev.map(item =>
+                item.id === tempId
+                    ? { ...item, status: 'ok' as const, proxyPath: result.proxy?.path || undefined, waveformPath: result.waveform?.path || undefined, duration }
+                    : item
+            ));
+            setStatusWrapper('ready', `Imported: ${filePath!.split(/[/\\]/).pop()}`);
         } catch (e: any) {
-            setStatusWrapper('error', 'Import failed');
-            alert(`Import failed: ${e.message} `);
-            // Remove failed item
-            setMedia(prev => prev.filter(m => m.status !== 'error' && m.status !== 'processing'));
+            // Keep item visible but mark as error
+            setMedia(prev => prev.map(item =>
+                item.id === tempId ? { ...item, status: 'error' as const } : item
+            ));
+            setStatusWrapper('error', `Import failed: ${e.message}`);
+            console.error('Import failed:', e);
         }
     }, [currentProject, invokeCommand, isTauri, setStatusWrapper]);
 
