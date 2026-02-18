@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { invokeCommand, useTauri } from '../hooks/useTauri';
+import { useTauri } from '../hooks/useTauri';
 import { logger } from '../utils/logger';
 
 // Types (simplified from main.js logic)
@@ -98,16 +98,30 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setStatusMessage(m);
     }, []);
 
+    const normalizeProject = (p: any): Project => {
+        const s = p.settings || {};
+        const resMap: Record<string, { w: number; h: number }> = {
+            '4K': { w: 3840, h: 2160 }, '1080p': { w: 1920, h: 1080 }, '720p': { w: 1280, h: 720 }
+        };
+        const dims = resMap[s.resolution] || { w: 1920, h: 1080 };
+        return {
+            ...p,
+            fps: p.fps || s.fps || 30,
+            width: p.width || dims.w,
+            height: p.height || dims.h,
+            aspectRatio: p.aspectRatio || s.aspectRatio || '16:9',
+        };
+    };
+
     const loadProjects = useCallback(async () => {
         try {
-            const result = await invokeCommand<{ projects: Project[] }>('list_projects');
+            const result = await invokeCommand<{ projects: any[] }>('list_projects');
             if (result && result.projects && result.projects.length > 0) {
-                setCurrentProject(result.projects[0]);
-                // TODO: Load media for the project from backend
+                setCurrentProject(normalizeProject(result.projects[0]));
                 setMedia([]);
             }
         } catch (e) {
-            console.error('Failed to load projects', e);
+            console.debug('Backend not available, starting fresh');
         }
     }, [invokeCommand]);
 

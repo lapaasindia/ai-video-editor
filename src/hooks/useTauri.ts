@@ -26,10 +26,13 @@ export const useTauri = () => {
             }
         } else {
             // Fallback for browser development (mock or fetch from local server)
-            console.warn(`Tauri is not available. Mocking command: ${cmd}`);
+            // console.warn suppressed - expected in browser dev mode
 
             // Basic mapping to the local node backend if available
             // Note: functionality might be limited in browser
+            if (process.env.NODE_ENV === 'development') {
+                console.debug(`[Browser] Routing command via HTTP: ${cmd}`);
+            }
             const routeMap: Record<string, { method: string; path: string; body?: any }> = {
                 'list_projects': { method: 'GET', path: '/projects' },
                 'create_project': { method: 'POST', path: '/projects/create', body: args.request },

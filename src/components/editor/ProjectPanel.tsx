@@ -1,11 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { ProjectWizard } from '../wizard/ProjectWizard';
+import { getTemplateRegistry, getCategoryLabel, TEMPLATE_CATEGORIES } from '../../templates/registry';
 
 export const ProjectPanel: React.FC = () => {
     const [activeTab, setActiveTab] = useState('project');
     const [showWizard, setShowWizard] = useState(false);
+    const [templateSearch, setTemplateSearch] = useState('');
+    const [activeCategory, setActiveCategory] = useState<string>('all');
     const { currentProject, media, importMedia } = useEditor();
+
+    const allTemplates = useMemo(() => getTemplateRegistry(), []);
+    const filteredTemplates = useMemo(() => {
+        return allTemplates.filter(t => {
+            const matchesSearch = templateSearch === '' ||
+                t.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
+                t.description.toLowerCase().includes(templateSearch.toLowerCase());
+            const matchesCategory = activeCategory === 'all' || t.category === activeCategory;
+            return matchesSearch && matchesCategory;
+        });
+    }, [allTemplates, templateSearch, activeCategory]);
 
     return (
         <>
@@ -101,10 +115,40 @@ export const ProjectPanel: React.FC = () => {
                     {activeTab === 'templates' && (
                         <div className="tab-content active">
                             <div className="search-box">
-                                <input type="text" placeholder="Search templates..." />
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input
+                                    type="text"
+                                    placeholder="Search templates..."
+                                    value={templateSearch}
+                                    onChange={e => setTemplateSearch(e.target.value)}
+                                />
+                            </div>
+                            <div className="template-categories" style={{ marginBottom: 8 }}>
+                                <button
+                                    className={`category-chip ${activeCategory === 'all' ? 'active' : ''}`}
+                                    onClick={() => setActiveCategory('all')}
+                                >All ({allTemplates.length})</button>
+                                {TEMPLATE_CATEGORIES.map(cat => {
+                                    const count = allTemplates.filter(t => t.category === cat).length;
+                                    if (count === 0) return null;
+                                    return (
+                                        <button
+                                            key={cat}
+                                            className={`category-chip ${activeCategory === cat ? 'active' : ''}`}
+                                            onClick={() => setActiveCategory(cat)}
+                                        >{getCategoryLabel(cat)} ({count})</button>
+                                    );
+                                })}
                             </div>
                             <div className="template-grid">
-                                {/* Templates list will go here */}
+                                {filteredTemplates.length === 0 ? (
+                                    <div className="empty-state-small"><p>No templates found</p></div>
+                                ) : filteredTemplates.map(t => (
+                                    <div key={t.id} className="template-card" title={t.description} style={{ cursor: 'pointer', padding: 8, background: 'var(--bg-secondary)', borderRadius: 6, border: '1px solid var(--panel-border)' }}>
+                                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{t.name}</div>
+                                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{getCategoryLabel(t.category)}</div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )}
