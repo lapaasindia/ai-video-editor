@@ -1121,9 +1121,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         start: (p.startUs ?? i * 7_000_000) / 1_000_000,
                         duration: ((p.endUs ?? 0) - (p.startUs ?? 0)) / 1_000_000 || 3,
                         offset: 0,
-                        type: 'overlay' as const,
+                        type: 'template' as const,
                         name: p.templateName || p.id || 'AI Template',
-                        templateData: {
+                        content: {
                             headline: p.content?.headline || '',
                             subline: p.content?.subline || '',
                         },
@@ -1157,7 +1157,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         start: (a.startUs ?? i * 7_000_000) / 1_000_000,
                         duration: ((a.endUs ?? 0) - (a.startUs ?? 0)) / 1_000_000 || 5,
                         offset: 0,
-                        type: 'broll' as const,
+                        type: 'image' as const,
                         name: a.query || `${a.kind || 'media'} ${i + 1}`,
                         assetData: {
                             kind: a.kind || 'image',
