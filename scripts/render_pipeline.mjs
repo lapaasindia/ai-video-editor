@@ -6,6 +6,7 @@ import path from 'node:path';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createStageTracker, recordProjectTelemetry } from './lib/pipeline_telemetry.mjs';
+import { hwDecodeArgs, hwEncodeVideoArgs, hwEncodeAudioArgs } from './lib/metal_accel.mjs';
 
 const execFile = promisify(execFileCb);
 
@@ -395,51 +396,34 @@ function escapeSubtitlePath(filePath) {
 
 async function renderSegment({ sourcePath, startUs, endUs, outputPath, profile }) {
   const isAudio = isAudioPath(sourcePath);
+  const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
+  const aEnc = await hwEncodeAudioArgs({ bitrate: '160k' });
+  const decArgs = await hwDecodeArgs();
 
   if (isAudio) {
-    // Generate video from black background + audio slice
     await run('ffmpeg', [
-      '-y',
-      '-loglevel', 'error',
+      '-y', '-loglevel', 'error',
       '-f', 'lavfi', '-i', 'color=c=black:s=1920x1080:r=30',
       '-ss', usToSec(startUs), '-to', usToSec(endUs), '-i', sourcePath,
       '-map', '0:v', '-map', '1:a',
       '-shortest',
-      '-c:v', 'libx264', '-preset', profile.preset, '-crf', String(profile.crf), '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '160k',
+      ...vEnc,
+      ...aEnc,
       '-movflags', '+faststart',
       outputPath,
     ]);
   } else {
-    // Standard video render
     await run('ffmpeg', [
-      '-y',
-      '-loglevel',
-      'error',
-      '-ss',
-      usToSec(startUs),
-      '-to',
-      usToSec(endUs),
-      '-i',
-      sourcePath,
-      '-map',
-      '0:v:0',
-      '-map',
-      '0:a?',
-      '-c:v',
-      'libx264',
-      '-preset',
-      profile.preset,
-      '-crf',
-      String(profile.crf),
-      '-pix_fmt',
-      'yuv420p',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '160k',
-      '-movflags',
-      '+faststart',
+      '-y', '-loglevel', 'error',
+      ...decArgs,
+      '-ss', usToSec(startUs),
+      '-to', usToSec(endUs),
+      '-i', sourcePath,
+      '-map', '0:v:0',
+      '-map', '0:a?',
+      ...vEnc,
+      ...aEnc,
+      '-movflags', '+faststart',
       outputPath,
     ]);
   }
@@ -633,25 +617,15 @@ async function renderWithOverlayCompositor({
     current = output;
   }
 
+  const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
   args.push(
     '-filter_complex',
     filters.join(';'),
-    '-map',
-    `[${current}]`,
-    '-map',
-    '0:a?',
-    '-c:v',
-    'libx264',
-    '-preset',
-    profile.preset,
-    '-crf',
-    String(profile.crf),
-    '-pix_fmt',
-    'yuv420p',
-    '-c:a',
-    'copy',
-    '-movflags',
-    '+faststart',
+    '-map', `[${current}]`,
+    '-map', '0:a?',
+    ...vEnc,
+    '-c:a', 'copy',
+    '-movflags', '+faststart',
     outputPath,
   );
 

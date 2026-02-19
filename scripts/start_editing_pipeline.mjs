@@ -7,6 +7,7 @@ import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createStageTracker, recordProjectTelemetry } from './lib/pipeline_telemetry.mjs';
 import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
+import { audioExtractArgs, parallelMap, detectHWAccel } from './lib/metal_accel.mjs';
 import {
   validateCanonicalTranscript,
   validateCutPlan,
@@ -267,23 +268,31 @@ async function splitAudioIntoChunks(inputPath, chunkDurationSec = 25) {
   // Get total duration
   const durationSec = await getDurationUs(inputPath) / 1_000_000;
   const chunkCount = Math.ceil(durationSec / chunkDurationSec);
-  const chunks = [];
 
-  for (let i = 0; i < chunkCount; i++) {
-    const startSec = i * chunkDurationSec;
-    const chunkPath = path.join(tmpDir, `chunk_${String(i).padStart(3, '0')}.wav`);
+  // Build chunk descriptors
+  const chunkDescs = Array.from({ length: chunkCount }, (_, i) => ({
+    index: i,
+    startSec: i * chunkDurationSec,
+    path: path.join(tmpDir, `chunk_${String(i).padStart(3, '0')}.wav`),
+  }));
+
+  // Use VideoToolbox hardware decode on Apple Silicon for faster demux
+  const hwArgs = await audioExtractArgs();
+
+  // Extract all chunks in parallel (6 concurrent — optimal for M3 Max)
+  await parallelMap(chunkDescs, async (chunk) => {
     await runWithOutput('ffmpeg', [
       '-y', '-hide_banner', '-loglevel', 'error',
+      ...hwArgs,
       '-i', inputPath,
-      '-ss', String(startSec),
+      '-ss', String(chunk.startSec),
       '-t', String(chunkDurationSec),
       '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le',
-      chunkPath,
+      chunk.path,
     ], 120000);
-    chunks.push({ path: chunkPath, startSec, index: i });
-  }
+  }, 6);
 
-  return { tmpDir, chunks };
+  return { tmpDir, chunks: chunkDescs };
 }
 
 async function transcribeChunkWithSarvam(chunkPath, language, apiKey) {
@@ -323,17 +332,29 @@ async function transcribeWithSarvam(inputPath, language) {
   console.error('[Sarvam] Splitting audio into 25s chunks for API...');
   const { tmpDir, chunks } = await splitAudioIntoChunks(inputPath, 25);
 
+  // Transcribe all chunks in parallel (concurrency=4 — Sarvam API rate limit safe)
+  console.error(`[Sarvam] Transcribing ${chunks.length} chunks in parallel (concurrency=4)...`);
+  const chunkResults = await parallelMap(chunks, async (chunk) => {
+    console.error(`[Sarvam] Transcribing chunk ${chunk.index + 1}/${chunks.length}...`);
+    try {
+      const result = await transcribeChunkWithSarvam(chunk.path, language, apiKey);
+      return { chunk, result, error: null };
+    } catch (e) {
+      console.error(`[Sarvam] Chunk ${chunk.index} failed: ${e.message}`);
+      return { chunk, result: null, error: e.message };
+    }
+  }, 4);
+
   const segments = [];
   const allWords = [];
   let segIdx = 0;
 
   try {
-    for (const chunk of chunks) {
-      console.error(`[Sarvam] Transcribing chunk ${chunk.index + 1}/${chunks.length}...`);
+    for (const { chunk, result, error } of chunkResults) {
+      if (error || !result) continue;
       const offsetUs = Math.round(chunk.startSec * 1_000_000);
 
       try {
-        const result = await transcribeChunkWithSarvam(chunk.path, language, apiKey);
         const transcriptText = result.transcript || '';
 
         if (!transcriptText.trim()) continue;
@@ -525,17 +546,16 @@ async function detectSilenceRanges(inputPath, durationUs) {
   }
 
   try {
+    // Use VideoToolbox hardware decode for faster silence analysis on Apple Silicon
+    const hwArgs = await audioExtractArgs();
     const result = await runWithOutput(
       'ffmpeg',
       [
         '-hide_banner',
-        '-i',
-        inputPath,
-        '-af',
-        'silencedetect=noise=-35dB:d=0.6',
-        '-f',
-        'null',
-        '-',
+        ...hwArgs,
+        '-i', inputPath,
+        '-af', 'silencedetect=noise=-35dB:d=0.6',
+        '-f', 'null', '-',
       ],
       6 * 60 * 1000,
     );
