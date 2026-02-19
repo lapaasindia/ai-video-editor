@@ -558,7 +558,7 @@ function buildAssetSuggestions(templatePlacements) {
 
 import os from 'node:os';
 import { promisify } from 'node:util';
-import { runLLMPrompt, extractJsonFromLLMOutput } from './lib/llm_provider.mjs';
+import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
 
 async function generateTemplatePlanWithOllama(segments, catalog, durationUs, llmConfig) {
   const templateList = catalog.map(t => ({ id: t.id, name: t.name, category: t.category }));
@@ -1250,12 +1250,14 @@ async function main() {
   const sourceRef = readArg('--source-ref', 'source-video') || 'source-video';
   const fetchExternal = readBooleanArg('--fetch-external', true);
   const fallbackPolicy = safeFallbackPolicy(readArg('--fallback-policy', 'local-first'));
+  // Auto-detect best LLM: Codex CLI → OpenAI → Google → Anthropic → Ollama
+  const autoLLM = await detectBestLLM();
+  const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || autoLLM.provider);
+  const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || autoLLM.model);
   const templatePlannerModel =
     readArg('--template-planner-model', '').trim() ||
     process.env.LAPAAS_TEMPLATE_PLANNER_MODEL ||
-    'qwen3:1.7b';
-  const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || 'ollama');
-  const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || templatePlannerModel);
+    llmModel;
   const llmConfig = { provider: llmProvider, model: llmModel };
   const maxRetries = safeInteger(
     readArg('--max-retries', process.env.LAPAAS_EDIT_NOW_MAX_RETRIES ?? '1'),

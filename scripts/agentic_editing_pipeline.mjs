@@ -24,6 +24,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { detectBestLLM } from './lib/llm_provider.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -83,8 +84,10 @@ async function main() {
     const mode = readArg('--mode', 'hybrid');
     const sourceRef = readArg('--source-ref', 'source-video');
     const fetchExternal = readArg('--fetch-external', 'true');
-    const llmProvider = readArg('--llm-provider', 'ollama');
-    const llmModel = readArg('--llm-model', '');
+    // Auto-detect best LLM: Codex CLI → OpenAI → Google → Anthropic → Ollama
+    const autoLLM = await detectBestLLM();
+    const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || autoLLM.provider);
+    const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || autoLLM.model);
 
     if (!projectId || !input) {
         throw new Error('Missing required args: --project-id and --input');
