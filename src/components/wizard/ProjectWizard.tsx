@@ -40,6 +40,11 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
     };
 
     const handleBrowseFolder = async () => {
+        // Blur any active input to prevent clipboard/focus issues when dialog closes
+        if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+        }
+
         try {
             // Try Tauri dialog first
             const { open } = await import('@tauri-apps/plugin-dialog');
@@ -75,7 +80,6 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
                                     name="name"
                                     value={formData.name}
                                     onChange={handleChange}
-                                    autoFocus
                                 />
                             </div>
                             <div className="form-group">
