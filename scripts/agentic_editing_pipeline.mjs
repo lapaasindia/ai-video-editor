@@ -129,18 +129,53 @@ async function main() {
     try {
         // ── Step 1: Transcription ────────────────────────────────────────────────
         currentStepIndex = 0;
-        await updateProgress('transcription', 'running', 'Transcribing audio...');
+        const transcriptPath = path.join(projectDir, 'transcript.json');
+        const transcriptExists = await exists(transcriptPath);
+        let startEditingResult;
 
-        const startEditingResult = await runScriptStep('start_editing_pipeline.mjs', [
-            '--project-id', projectId,
-            '--input', input,
-            '--mode', mode,
-            '--language', language,
-            '--fps', fps,
-            '--source-ref', sourceRef,
-            '--llm-provider', llmProvider,
-            ...(llmModel ? ['--llm-model', llmModel] : []),
-        ]);
+        if (transcriptExists) {
+            // Re-use existing transcript — skip re-transcription to save API credits
+            console.error('[Agent] Transcript already exists — skipping transcription step');
+            const existing = JSON.parse(await fs.readFile(transcriptPath, 'utf8'));
+            const isMock = (existing.adapter?.engine || '').includes('stub') ||
+                           (existing.words?.[0]?.text === 'Mock');
+            if (isMock) {
+                console.error('[Agent] Existing transcript is mock — running real transcription with Sarvam');
+                await updateProgress('transcription', 'running', 'Transcribing with Sarvam AI...');
+                startEditingResult = await runScriptStep('start_editing_pipeline.mjs', [
+                    '--project-id', projectId,
+                    '--input', input,
+                    '--mode', mode,
+                    '--language', language,
+                    '--fps', fps,
+                    '--source-ref', sourceRef,
+                    '--transcription-model', 'sarvam',
+                    '--llm-provider', llmProvider,
+                    ...(llmModel ? ['--llm-model', llmModel] : []),
+                ]);
+            } else {
+                await updateProgress('transcription', 'skipped', `Using existing transcript (${existing.segments?.length ?? 0} segments)`);
+                startEditingResult = {
+                    transcript: existing,
+                    removeRanges: [],
+                    durationUs: existing.source?.durationUs ?? 0,
+                    adapter: existing.adapter?.runtime ?? 'cached',
+                };
+            }
+        } else {
+            await updateProgress('transcription', 'running', 'Transcribing with Sarvam AI...');
+            startEditingResult = await runScriptStep('start_editing_pipeline.mjs', [
+                '--project-id', projectId,
+                '--input', input,
+                '--mode', mode,
+                '--language', language,
+                '--fps', fps,
+                '--source-ref', sourceRef,
+                '--transcription-model', 'sarvam',
+                '--llm-provider', llmProvider,
+                ...(llmModel ? ['--llm-model', llmModel] : []),
+            ]);
+        }
 
         results.transcription = {
             segments: startEditingResult.transcript?.segments?.length ?? 0,
