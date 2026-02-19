@@ -87,7 +87,30 @@ async function pythonPackageExists(packageName) {
   }
 }
 
+// Check for faster-whisper in a known venv location
+const WHISPER_VENV_PYTHON = path.join(os.homedir(), '.local', 'whisper-venv', 'bin', 'python3');
+const TRANSCRIBE_SCRIPT = path.join(process.cwd(), 'scripts', 'transcribe_faster_whisper.py');
+
+async function detectVenvFasterWhisper() {
+  try {
+    await fs.access(WHISPER_VENV_PYTHON, 1 /* fs.constants.X_OK */);
+    const probe = await run(WHISPER_VENV_PYTHON, [
+      '-c',
+      `import importlib.util as u; print('ok' if u.find_spec('faster_whisper') else 'missing')`,
+    ]);
+    return probe === 'ok';
+  } catch {
+    return false;
+  }
+}
+
 async function detectLocalTranscriptionRuntime() {
+  // 1. Check venv-based faster-whisper (preferred — always available after install)
+  if (await detectVenvFasterWhisper()) {
+    return { available: true, runtime: 'faster_whisper', binary: WHISPER_VENV_PYTHON };
+  }
+
+  // 2. Check whisper.cpp CLI
   const whisperCli = await commandExists('whisper-cli');
   if (whisperCli) {
     return { available: true, runtime: 'whisper_cpp', binary: whisperCli };
@@ -98,13 +121,13 @@ async function detectLocalTranscriptionRuntime() {
     return { available: true, runtime: 'whisper_cpp', binary: whisperCpp };
   }
 
-  // Check generic 'main' if it looks like whisper? Too risky to match any 'main'.
-
+  // 3. Check system-level faster_whisper
   const python3 = await commandExists('python3');
   if (python3 && (await pythonPackageExists('faster_whisper'))) {
     return { available: true, runtime: 'faster_whisper', binary: python3 };
   }
 
+  // 4. Check mlx_whisper
   const mlxWhisper = await commandExists('mlx_whisper');
   if (mlxWhisper) {
     return { available: true, runtime: 'mlx_whisper', binary: mlxWhisper };
@@ -113,8 +136,9 @@ async function detectLocalTranscriptionRuntime() {
   return { available: false, runtime: '', binary: '' };
 }
 
-async function selectTranscriptionAdapter({ mode, fallbackPolicy, transcriptionModel }) {
+async function selectTranscriptionAdapter({ mode, fallbackPolicy, transcriptionModel, language }) {
   const local = await detectLocalTranscriptionRuntime();
+  const hasSarvamKey = Boolean(process.env.SARVAM_API_KEY);
   const apiProvider = process.env.LAPAAS_TRANSCRIPTION_API_PROVIDER || 'openai';
   const defaultApiModel = process.env.LAPAAS_API_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
   const defaultLocalModel = process.env.LAPAAS_LOCAL_TRANSCRIBE_MODEL || 'auto';
@@ -123,6 +147,24 @@ async function selectTranscriptionAdapter({ mode, fallbackPolicy, transcriptionM
   const effectiveFallbackPolicy = safeFallbackPolicy(fallbackPolicy);
   const localModel = transcriptionModel || defaultLocalModel;
   const apiModel = transcriptionModel || defaultApiModel;
+
+  // Sarvam is optimal for Hindi/Indian languages
+  const isIndicLanguage = ['hi', 'bn', 'kn', 'ml', 'mr', 'od', 'pa', 'ta', 'te', 'gu', 'ur'].includes((language || '').split('-')[0]);
+
+  const buildSarvamAdapter = () => ({
+    kind: 'api',
+    runtime: 'sarvam',
+    binary: '',
+    model: 'saaras:v3',
+    fallbackPolicy: effectiveFallbackPolicy,
+    warnings,
+  });
+
+  // Explicit Sarvam selection by user
+  if (transcriptionModel === 'sarvam') {
+    if (hasSarvamKey) return buildSarvamAdapter();
+    warnings.push('User selected Sarvam AI but SARVAM_API_KEY is missing. Falling back to default selection logic.');
+  }
 
   const buildLocalAdapter = () => ({
     kind: 'local',
@@ -142,6 +184,12 @@ async function selectTranscriptionAdapter({ mode, fallbackPolicy, transcriptionM
     warnings,
   });
 
+  // Priority: Sarvam (for Hindi/Indic) → local faster-whisper → other API
+  if (hasSarvamKey && isIndicLanguage) {
+    console.error(`[Adapter] Using Sarvam AI Saaras for ${language} transcription`);
+    return buildSarvamAdapter();
+  }
+
   if (mode === 'local') {
     if (!local.available) {
       throw new Error(
@@ -152,6 +200,8 @@ async function selectTranscriptionAdapter({ mode, fallbackPolicy, transcriptionM
   }
 
   if (mode === 'api') {
+    // If Sarvam key is available, prefer it for Indic
+    if (hasSarvamKey && isIndicLanguage) return buildSarvamAdapter();
     if (!hasApiKey) {
       warnings.push(
         'API mode selected but OPENAI_API_KEY/LAPAAS_API_KEY is missing. Stub transcription output was generated.',
@@ -170,6 +220,7 @@ async function selectTranscriptionAdapter({ mode, fallbackPolicy, transcriptionM
   }
 
   if (effectiveFallbackPolicy === 'api-only') {
+    if (hasSarvamKey && isIndicLanguage) return buildSarvamAdapter();
     if (!hasApiKey) {
       warnings.push(
         'API-only fallback policy selected but OPENAI_API_KEY/LAPAAS_API_KEY is missing. Stub transcription output was generated.',
@@ -179,22 +230,20 @@ async function selectTranscriptionAdapter({ mode, fallbackPolicy, transcriptionM
   }
 
   if (effectiveFallbackPolicy === 'api-first') {
-    if (hasApiKey) {
-      return buildApiAdapter();
-    }
-    warnings.push('api-first fallback: API key missing, trying local runtime.');
-    if (local.available) {
-      return buildLocalAdapter();
-    }
-    warnings.push(
-      'OPENAI_API_KEY/LAPAAS_API_KEY is missing and no local runtime detected. Stub transcription output was generated.',
-    );
+    if (hasSarvamKey && isIndicLanguage) return buildSarvamAdapter();
+    if (hasApiKey) return buildApiAdapter();
+    warnings.push('api-first fallback: API keys missing, trying local runtime.');
+    if (local.available) return buildLocalAdapter();
+    warnings.push('No API key and no local runtime. Stub transcription output was generated.');
     return buildApiAdapter();
   }
 
+  // Hybrid / local-first default
   if (local.available) {
     return buildLocalAdapter();
   }
+
+  if (hasSarvamKey && isIndicLanguage) return buildSarvamAdapter();
 
   warnings.push('Hybrid mode fallback: no local runtime detected, using API adapter path.');
   if (!hasApiKey) {
@@ -203,6 +252,181 @@ async function selectTranscriptionAdapter({ mode, fallbackPolicy, transcriptionM
     );
   }
   return buildApiAdapter();
+}
+
+// ── Sarvam AI Saaras Transcription ──────────────────────────────────────────
+
+async function splitAudioIntoChunks(inputPath, chunkDurationSec = 25) {
+  const hasFfmpeg = await commandExists('ffmpeg');
+  if (!hasFfmpeg) throw new Error('ffmpeg required for audio chunking');
+
+  const tmpDir = path.join(os.tmpdir(), `sarvam_chunks_${Date.now()}`);
+  await fs.mkdir(tmpDir, { recursive: true });
+
+  // Get total duration
+  const durationSec = await getDurationUs(inputPath) / 1_000_000;
+  const chunkCount = Math.ceil(durationSec / chunkDurationSec);
+  const chunks = [];
+
+  for (let i = 0; i < chunkCount; i++) {
+    const startSec = i * chunkDurationSec;
+    const chunkPath = path.join(tmpDir, `chunk_${String(i).padStart(3, '0')}.wav`);
+    await runWithOutput('ffmpeg', [
+      '-y', '-hide_banner', '-loglevel', 'error',
+      '-i', inputPath,
+      '-ss', String(startSec),
+      '-t', String(chunkDurationSec),
+      '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le',
+      chunkPath,
+    ], 120000);
+    chunks.push({ path: chunkPath, startSec, index: i });
+  }
+
+  return { tmpDir, chunks };
+}
+
+async function transcribeChunkWithSarvam(chunkPath, language, apiKey) {
+  const fileBuffer = await fs.readFile(chunkPath);
+  const blob = new Blob([fileBuffer], { type: 'audio/wav' });
+
+  const formData = new FormData();
+  formData.append('file', blob, path.basename(chunkPath));
+  formData.append('model', 'saaras:v3');
+  formData.append('mode', 'transcribe');
+  formData.append('with_timestamps', 'true');
+
+  // Map language codes: hi -> hi-IN
+  const langCode = language.includes('-') ? language : `${language}-IN`;
+  formData.append('language_code', langCode);
+
+  const response = await fetch('https://api.sarvam.ai/speech-to-text', {
+    method: 'POST',
+    headers: {
+      'api-subscription-key': apiKey,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Sarvam API error (${response.status}): ${text}`);
+  }
+
+  return response.json();
+}
+
+async function transcribeWithSarvam(inputPath, language) {
+  const apiKey = process.env.SARVAM_API_KEY;
+  if (!apiKey) throw new Error('SARVAM_API_KEY not set');
+
+  console.error('[Sarvam] Splitting audio into 25s chunks for API...');
+  const { tmpDir, chunks } = await splitAudioIntoChunks(inputPath, 25);
+
+  const segments = [];
+  const allWords = [];
+  let segIdx = 0;
+
+  try {
+    for (const chunk of chunks) {
+      console.error(`[Sarvam] Transcribing chunk ${chunk.index + 1}/${chunks.length}...`);
+      const offsetUs = Math.round(chunk.startSec * 1_000_000);
+
+      try {
+        const result = await transcribeChunkWithSarvam(chunk.path, language, apiKey);
+        const transcriptText = result.transcript || '';
+
+        if (!transcriptText.trim()) continue;
+
+        // Build segment from chunk — sanitize Sarvam output
+        const chunkWords = [];
+        if (result.timestamps?.words) {
+          for (const w of result.timestamps.words) {
+            const rawText = (w.word || w.text || '').trim();
+            // Skip words with empty text
+            if (!rawText) continue;
+
+            let wStartUs = Math.round((w.start_time_seconds || 0) * 1_000_000) + offsetUs;
+            let wEndUs = Math.round((w.end_time_seconds || 0) * 1_000_000) + offsetUs;
+
+            // Ensure endUs > startUs — assign minimum 50ms duration if needed
+            if (wEndUs <= wStartUs) {
+              wEndUs = wStartUs + 50_000; // 50ms minimum word duration
+            }
+
+            const wordObj = {
+              id: `word-${segIdx}-${allWords.length + chunkWords.length}`,
+              text: rawText,
+              normalized: rawText.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ''),
+              startUs: wStartUs,
+              endUs: wEndUs,
+              confidence: 0.92,
+            };
+            chunkWords.push(wordObj);
+          }
+        }
+
+        // Determine segment timing
+        const chunkEndUs = offsetUs + 25_000_000;
+        let segStartUs, segEndUs;
+
+        // Check if word timestamps are actually valid (not all zeros)
+        const hasValidWordTimestamps = chunkWords.length > 0 &&
+          chunkWords.some(w => w.startUs > offsetUs || w.endUs > offsetUs + 50_000);
+
+        if (hasValidWordTimestamps) {
+          segStartUs = chunkWords[0].startUs;
+          segEndUs = chunkWords[chunkWords.length - 1].endUs;
+        } else {
+          // Word timestamps are all zeros/invalid — use chunk-level timing instead
+          segStartUs = offsetUs;
+          segEndUs = chunkEndUs;
+        }
+
+        // Ensure segment endUs > startUs
+        if (segEndUs <= segStartUs) {
+          segEndUs = segStartUs + 1_000_000; // 1 second minimum segment duration
+        }
+
+        // Use buildWords to synthesize proper word timing if word timestamps were invalid
+        const finalWords = hasValidWordTimestamps ? chunkWords : buildWords(transcriptText, segStartUs, segEndUs);
+
+        // Add words to allWords
+        for (const w of finalWords) {
+          allWords.push(w);
+        }
+
+        const seg = {
+          id: `seg-${segIdx}`,
+          startUs: segStartUs,
+          endUs: segEndUs,
+          text: transcriptText.trim(),
+          words: finalWords,
+          confidence: 0.92,
+        };
+        segments.push(seg);
+        segIdx++;
+
+        console.error(`  [${chunk.startSec}s] ${transcriptText.trim().slice(0, 80)}...`);
+      } catch (e) {
+        console.error(`[Sarvam] Chunk ${chunk.index} failed: ${e.message}`);
+      }
+    }
+  } finally {
+    // Cleanup temp chunks
+    for (const chunk of chunks) {
+      await fs.unlink(chunk.path).catch(() => { });
+    }
+    await fs.rmdir(tmpDir).catch(() => { });
+  }
+
+  console.error(`[Sarvam] Done: ${segments.length} segments, ${allWords.length} words`);
+
+  return {
+    language: language || 'hi',
+    segments,
+    words: allWords,
+    wordCount: allWords.length,
+  };
 }
 
 async function getDurationUs(inputPath) {
@@ -307,7 +531,7 @@ async function detectSilenceRanges(inputPath, durationUs) {
         '-i',
         inputPath,
         '-af',
-        'silencedetect=noise=-35dB:d=0.35',
+        'silencedetect=noise=-35dB:d=0.6',
         '-f',
         'null',
         '-',
@@ -359,33 +583,19 @@ async function extractAudioForWhisper(inputPath, outputPath) {
 
 async function transcribeWithWhisperCpp(adapter, inputPath) {
   const { binary, model } = adapter;
-  // Assume model is a path or we need to find it. 
-  // For now, if 'model' is just a name like 'base.en', we assume it's in specific dir or user provided full path.
-  // We will assume 'model' arg passed to script is the full path or relative path to .bin file.
-
-  // Create temp wav
   const tempWav = `${inputPath}.16k.wav`;
   try {
     await extractAudioForWhisper(inputPath, tempWav);
-
-    // Output file base (whisper-cli adds .json)
-    // We use inputPath dirname + filename w/o extension
     const outputBase = tempWav.replace(/\.wav$/, '');
-
-    // whisper-cli args: -m <model> -f <wav> --output-json
-    // Note: arguments depend on specific whisper.cpp version/build. 
-    // Standard main example: ./main -m models/ggml-base.en.bin -f samples/jfk.wav -oj
-
     const args = [
       '-m', model,
       '-f', tempWav,
-      '--output-json', // -oj
-      '--output-file', outputBase // implicit in some versions, explicit in others. 
-      // -of specifies output filename WITHOUT extension.
+      '--output-json',
+      '--output-file', outputBase
     ];
 
     console.error(`[WhisperCpp] Running: ${binary} ${args.join(' ')}`);
-    await runWithOutput(binary, args, 10 * 60 * 1000); // 10 min timeout
+    await runWithOutput(binary, args, 10 * 60 * 1000);
 
     const jsonPath = `${outputBase}.json`;
     try {
@@ -394,13 +604,49 @@ async function transcribeWithWhisperCpp(adapter, inputPath) {
     } catch (e) {
       throw new Error(`Failed to read whisper output: ${e.message}`);
     }
-
   } finally {
-    // Cleanup temp wav
     try { await fs.unlink(tempWav); } catch { }
-    // Cleanup json? Maybe keep for debug? We'll leave it or delete it.
-    // try { await fs.unlink(`${tempWav.replace(/\.wav$/, '')}.json`); } catch {}
   }
+}
+
+async function transcribeWithFasterWhisper(adapter, inputPath) {
+  const { binary } = adapter;
+  const modelSize = (adapter.model && adapter.model !== 'auto') ? adapter.model : 'tiny';
+
+  console.error(`[FasterWhisper] Transcribing with model '${modelSize}' using ${binary}...`);
+
+  const result = await runWithOutput(binary, [
+    TRANSCRIBE_SCRIPT,
+    inputPath,
+    '--model', modelSize,
+  ], 15 * 60 * 1000); // 15 min timeout for large files
+
+  try {
+    return JSON.parse(result.stdout);
+  } catch (e) {
+    console.error('[FasterWhisper] Raw stdout:', result.stdout?.slice(0, 500));
+    console.error('[FasterWhisper] Stderr:', result.stderr?.slice(0, 500));
+    throw new Error(`Failed to parse faster-whisper output: ${e.message}`);
+  }
+}
+
+function normalizeFasterWhisperTranscript(fwResult, durationUs) {
+  const segments = (fwResult.segments || []).map((seg) => {
+    return {
+      id: seg.id,
+      startUs: seg.startUs,
+      endUs: seg.endUs,
+      text: seg.text,
+      words: seg.words || buildWords(seg.text, seg.startUs, seg.endUs),
+      confidence: seg.confidence || 0.9,
+    };
+  });
+
+  return {
+    language: fwResult.language || 'en',
+    segments,
+    wordCount: fwResult.wordCount || segments.reduce((sum, s) => sum + (s.words?.length || 0), 0),
+  };
 }
 
 function normalizeWhisperTranscript(whisperJson, durationUs) {
@@ -601,63 +847,58 @@ function clampRanges(ranges, durationUs) {
   return merged;
 }
 
-async function generateCutPlanWithOllama(transcriptPayload, model) {
-  const systemPrompt = `You are an expert video editor. Your task is to analyze the provided transcript and identify sections to REMOVE (cut out) to make the video concise, engaging, and professional.
-  
-  Focus on removing:
-  1. Filler words (um, uh, like) if they disrupt flow.
-  2. Long silences or pauses (implied by gaps in timestamps).
-  3. Repetitive redundancy.
-  4. Off-topic tangents.
-  
-  Output MUST be valid JSON with this structure:
-  {
-    "removeRanges": [
-      { "startUs": 1000000, "endUs": 2500000, "reason": "filler-word", "confidence": 0.9 },
-      ...
-    ]
-  }
-  
-  Use 'startUs' and 'endUs' in microseconds (integers).
-  Do NOT output markdown. Output ONLY the JSON object.`;
+import { runLLMPrompt, extractJsonFromLLMOutput } from './lib/llm_provider.mjs';
 
-  // Simplify transcript for prompt to save context tokens
-  const simplifiedTranscript = transcriptPayload.segments.map(s => ({
+async function generateCutPlanWithOllama(transcriptPayload, llmConfig) {
+  const segments = (transcriptPayload.segments || []);
+  const simplifiedTranscript = segments.map(s => ({
     startUs: s.startUs,
     endUs: s.endUs,
     text: s.text
   }));
 
-  const userPrompt = `Transcript:\n${JSON.stringify(simplifiedTranscript, null, 2)}\n\nGenerate the cut plan JSON.`;
+  const prompt = `You are an expert video editor AI. Analyze this transcript deeply.
 
-  try {
-    console.error(`[Ollama] Generating cut plan with ${model}...`);
+Transcript segments:
+${JSON.stringify(simplifiedTranscript, null, 1)}
 
-    // Write prompt to temp file to avoid shell escaping issues and stdin weirdness
-    const promptPath = path.join(os.tmpdir(), `ollama_prompt_${Date.now()}.txt`);
-    await fs.writeFile(promptPath, systemPrompt + "\n\n" + userPrompt);
+Your tasks:
+1. Identify sections to CUT (remove) - filler words, long pauses, repetitions, off-topic tangents
+2. Label each remaining section with a type: intro, key-point, example, transition, conclusion, tangent
+3. Suggest overlay text for the 3-5 most important moments
 
+Respond ONLY with this JSON (no markdown, no explanation):
+{
+  "removeRanges": [
+    { "startUs": 0, "endUs": 0, "reason": "filler-word|silence|repetition|tangent", "confidence": 0.9 }
+  ],
+  "sections": [
+    { "startUs": 0, "endUs": 0, "type": "intro|key-point|example|transition|conclusion", "summary": "brief description" }
+  ],
+  "overlayTexts": [
+    { "startUs": 0, "endUs": 0, "text": "Key point text to show on screen" }
+  ]
+}`;
+
+  console.error(`[LLM] Generating AI cut plan with ${llmConfig.provider}/${llmConfig.model}...`);
+
+  // Retry up to 2 times if JSON parsing fails
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      // Use shell redirection: ollama run model < promptPath
-      // exec requires shell: true (default)
-      // We need 'child_process' exec, not execFile
-      const { exec } = await import('node:child_process');
-      const execAsync = promisify(exec);
+      const response = await runLLMPrompt(llmConfig, prompt, 180000);
+      const result = extractJsonFromLLMOutput(response);
 
-      const { stdout } = await execAsync(`ollama run ${model} < "${promptPath}"`, { timeout: 120000 });
+      // Ensure required fields exist
+      if (!Array.isArray(result.removeRanges)) result.removeRanges = [];
+      if (!Array.isArray(result.sections)) result.sections = [];
+      if (!Array.isArray(result.overlayTexts)) result.overlayTexts = [];
 
-      const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("No JSON found in LLM output");
-      }
-    } finally {
-      await fs.unlink(promptPath).catch(() => { });
+      console.error(`[LLM] AI analysis: ${result.removeRanges.length} cuts, ${result.sections.length} sections, ${result.overlayTexts.length} overlays`);
+      return result;
+    } catch (e) {
+      console.error(`[LLM] Attempt ${attempt} failed:`, e.message);
+      if (attempt === 2) throw e;
     }
-  } catch (e) {
-    console.error("Ollama planning failed:", e);
-    throw e;
   }
 }
 
@@ -691,13 +932,13 @@ function buildSyntheticCutPlan(durationUs, transcriptPayload, { silenceRanges = 
     const current = transcriptPayload.segments[index];
     const next = transcriptPayload.segments[index + 1];
     const gap = next.startUs - current.endUs;
-    if (gap < 450_000) {
+    if (gap < 800_000) {
       continue;
     }
     const midpoint = current.endUs + Math.floor(gap / 2);
     candidates.push({
-      startUs: Math.max(0, midpoint - 140_000),
-      endUs: Math.min(durationUs, midpoint + 140_000),
+      startUs: Math.max(0, midpoint - 100_000),
+      endUs: Math.min(durationUs, midpoint + 100_000),
       reason: 'long-pause',
       confidence: 0.67,
     });
@@ -720,6 +961,14 @@ function buildSyntheticCutPlan(durationUs, transcriptPayload, { silenceRanges = 
         endUs: Number(range?.endUs || 0),
         reason: 'silence',
         confidence: Number(range?.confidence || 0.72),
+      }))
+      .filter((range) => range.endUs > range.startUs)
+      // Only cut silences longer than 800ms, and add 150ms padding on each side
+      .filter((range) => (range.endUs - range.startUs) > 800_000)
+      .map((range) => ({
+        ...range,
+        startUs: range.startUs + 150_000,  // keep 150ms of silence before cut
+        endUs: range.endUs - 150_000,      // keep 150ms of silence after cut
       }))
       .filter((range) => range.endUs > range.startUs)
     : [];
@@ -802,7 +1051,10 @@ async function main() {
   const cutPlannerModel =
     readArg('--cut-planner-model', '').trim() ||
     process.env.LAPAAS_CUT_PLANNER_MODEL ||
-    'heuristic-cut-planner-v1';
+    'qwen3:1.7b';
+  const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || 'ollama');
+  const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || cutPlannerModel);
+  const llmConfig = { provider: llmProvider, model: llmModel };
 
   if (!projectId) {
     throw new Error('Missing required argument: --project-id');
@@ -819,7 +1071,7 @@ async function main() {
     throw new Error(`Input file not found: ${inputPath}`);
   }
 
-  const projectDir = path.resolve('desktop', 'data', projectId);
+  const projectDir = readArg('--project-dir') || path.resolve('desktop', 'data', projectId);
   const transcriptPath = path.join(projectDir, 'transcript.json');
   const cutPlanPath = path.join(projectDir, 'cut-plan.json');
   const jobPath = path.join(projectDir, 'start-editing-job.json');
@@ -846,6 +1098,7 @@ async function main() {
         mode,
         fallbackPolicy,
         transcriptionModel,
+        language,
       }),
     );
 
@@ -864,38 +1117,59 @@ async function main() {
     transcriptPayload = await tracker.run('transcription-synthesis', async () => {
       let transcript;
 
-      if (adapter.kind === 'local' && adapter.runtime === 'whisper_cpp') {
+      if (adapter.runtime === 'sarvam') {
+        // Sarvam AI Saaras — best for Hindi/Indian languages
         try {
-          console.error('Starting local Whisper transcription...');
+          console.error('Starting Sarvam AI transcription (Hindi-optimized)...');
+          transcript = await transcribeWithSarvam(inputPath, language);
+        } catch (e) {
+          console.error('Sarvam transcription failed, trying local fallback:', e.message);
+          const localFallback = await detectLocalTranscriptionRuntime();
+          if (localFallback.available && localFallback.runtime === 'faster_whisper') {
+            try {
+              const raw = await transcribeWithFasterWhisper({ ...adapter, binary: localFallback.binary, model: 'auto' }, inputPath);
+              transcript = normalizeFasterWhisperTranscript(raw, durationUs);
+            } catch (e2) {
+              console.error('Local fallback also failed:', e2.message);
+              transcript = buildSyntheticTranscript({ durationUs, mode, language, adapter: 'sarvam:fallback' });
+            }
+          } else {
+            transcript = buildSyntheticTranscript({ durationUs, mode, language, adapter: 'sarvam:fallback' });
+          }
+        }
+      } else if (adapter.kind === 'local' && adapter.runtime === 'faster_whisper') {
+        try {
+          console.error('Starting local faster-whisper transcription...');
+          const raw = await transcribeWithFasterWhisper(adapter, inputPath);
+          transcript = normalizeFasterWhisperTranscript(raw, durationUs);
+        } catch (e) {
+          console.error('faster-whisper transcription failed, falling back to synthetic:', e.message);
+          transcript = buildSyntheticTranscript({
+            durationUs, mode, language,
+            adapter: `${adapter.kind}:${adapter.runtime}:fallback`,
+          });
+        }
+      } else if (adapter.kind === 'local' && adapter.runtime === 'whisper_cpp') {
+        try {
+          console.error('Starting local Whisper.cpp transcription...');
           const raw = await transcribeWithWhisperCpp(adapter, inputPath);
           transcript = normalizeWhisperTranscript(raw, durationUs);
         } catch (e) {
           console.error('Local transcription failed, falling back to synthetic:', e);
           transcript = buildSyntheticTranscript({
-            durationUs,
-            mode,
-            language,
+            durationUs, mode, language,
             adapter: `${adapter.kind}:${adapter.runtime}:fallback`,
           });
         }
       } else {
         transcript = buildSyntheticTranscript({
-          durationUs,
-          mode,
-          language,
+          durationUs, mode, language,
           adapter: `${adapter.kind}:${adapter.runtime}`,
         });
       }
 
       const canonical = toCanonicalTranscript({
-        projectId,
-        inputPath,
-        sourceRef,
-        mode,
-        language,
-        durationUs,
-        adapter,
-        transcript,
+        projectId, inputPath, sourceRef, mode, language, durationUs, adapter, transcript,
       });
       return validateCanonicalTranscript(canonical);
     });
@@ -906,7 +1180,7 @@ async function main() {
 
       if (isLLM) {
         try {
-          const llmResult = await generateCutPlanWithOllama(transcriptPayload, cutPlannerModel);
+          const llmResult = await generateCutPlanWithOllama(transcriptPayload, llmConfig);
           planned = {
             removeRanges: clampRanges(llmResult.removeRanges || [], durationUs),
             analysis: {

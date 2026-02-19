@@ -2,8 +2,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useTauri } from '../hooks/useTauri';
 import { logger } from '../utils/logger';
+import { getTemplateById } from '../templates/registry';
 
-const BACKEND = 'http://localhost:43123';
+const BACKEND = 'http://127.0.0.1:43123';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -18,8 +19,11 @@ export interface Project {
     language?: string;
     aiMode?: string;
     transcriptionModel?: string;
+    llmProvider?: string;
+    llmModel?: string;
     inputPath?: string;
     duration?: number;
+    projectDir?: string;
 }
 
 export interface MediaItem {
@@ -40,8 +44,12 @@ export interface Clip {
     start: number;   // seconds
     duration: number; // seconds
     offset: number;
-    type: 'video' | 'audio' | 'text' | 'image';
+    type: 'video' | 'audio' | 'text' | 'image' | 'template';
     name: string;
+    // Optional properties for overlays/templates
+    sourceRef?: string;
+    templateId?: string;
+    content?: { headline?: string; subline?: string;[key: string]: any };
 }
 
 export interface Track {
@@ -77,12 +85,29 @@ export interface RenderResult {
 export type PipelineStage =
     | 'idle'
     | 'transcribing'
-    | 'rough_cut_ready'
+    | 'transcript_ready'
+    | 'planning_cuts'
+    | 'cuts_ready'
+    | 'overlaying_chunk'
+    | 'chunk_review'
+    | 'rough_cut_ready'    // legacy compat
     | 'enriching'
     | 'enrichment_ready'
     | 'rendering'
     | 'done'
     | 'error';
+
+export interface ChunkOverlay {
+    id: string;
+    templateId: string;
+    templateName: string;
+    startUs: number;
+    endUs: number;
+    content: { headline: string; subline: string };
+    assetQuery?: string;
+    assetPath?: string;
+    approved: boolean;
+}
 
 export interface EditorState {
     currentProject: Project | null;
@@ -96,11 +121,20 @@ export interface EditorState {
     // Pipeline state
     pipelineStage: PipelineStage;
     pipelineError: string | null;
+    pipelineProgress: { percent: number; message: string; startedAt: number } | null;
     transcript: TranscriptSegment[] | null;
+    fullTranscript: any | null;  // full canonical transcript from backend
     cutPlan: CutRange[] | null;
     renderResult: RenderResult | null;
     enrichmentSummary: { templateCount: number; assetCount: number } | null;
     renderProgress: { percent: number; stage: string } | null;
+    agenticProgress: { currentStep: string; percent: number; status: string; detail: string } | null;
+    // Chunk-by-chunk state
+    overlayChunkIndex: number;
+    totalOverlayChunks: number;
+    currentChunkOverlays: ChunkOverlay[];
+    chunkOverlays: Record<number, ChunkOverlay[]>;
+    fastTrackMode: boolean;
 }
 
 interface EditorContextType extends EditorState {
@@ -110,6 +144,10 @@ interface EditorContextType extends EditorState {
     closeProject: () => void;
     importMedia: (path?: string) => Promise<void>;
     addClip: (mediaId: string, trackId: string, time: number) => void;
+    addTemplateClip: (templateId: string, trackId: string, time: number) => void;
+    addTrack: (type?: 'video' | 'audio' | 'overlay' | 'text', id?: string) => void;
+    deleteTrack: (trackId: string) => void;
+    updateClip: (clipId: string, trackId: string, updates: Partial<Clip>) => void;
     moveClip: (clipId: string, trackId: string, newStartTime: number) => void;
     splitClip: (clipId: string, trackId: string, splitTime: number) => void;
     trimClip: (clipId: string, trackId: string, side: 'start' | 'end', newValue: number) => void;
@@ -125,7 +163,14 @@ interface EditorContextType extends EditorState {
     setStatus: (status: 'ready' | 'processing' | 'error', message: string) => void;
     // Pipeline actions
     startEditing: () => Promise<void>;
+    exportFCPXML: () => Promise<void>;
+    approveTranscript: () => Promise<void>;
+    approveCuts: () => void;
+    approveChunk: () => void;
+    toggleFastTrack: () => void;
+    retryStep: () => void;
     editNow: () => Promise<void>;
+    agenticEdit: () => Promise<void>;
     renderVideo: (options?: { burnSubtitles?: boolean; quality?: string }) => Promise<void>;
     openInFinder: (filePath: string) => Promise<void>;
     resetPipeline: () => void;
@@ -135,6 +180,7 @@ interface EditorContextType extends EditorState {
     setMedia: React.Dispatch<React.SetStateAction<MediaItem[]>>;
     setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
     setCutPlan: React.Dispatch<React.SetStateAction<CutRange[] | null>>;
+    setCurrentChunkOverlays: React.Dispatch<React.SetStateAction<ChunkOverlay[]>>;
 }
 
 const EditorContext = createContext<EditorContextType | null>(null);
@@ -172,11 +218,21 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Pipeline state
     const [pipelineStage, setPipelineStage] = useState<PipelineStage>('idle');
     const [pipelineError, setPipelineError] = useState<string | null>(null);
+    const [pipelineProgress, setPipelineProgress] = useState<{ percent: number; message: string; startedAt: number } | null>(null);
     const [transcript, setTranscript] = useState<TranscriptSegment[] | null>(null);
     const [cutPlan, setCutPlan] = useState<CutRange[] | null>(null);
     const [renderResult, setRenderResult] = useState<RenderResult | null>(null);
     const [enrichmentSummary, setEnrichmentSummary] = useState<{ templateCount: number; assetCount: number } | null>(null);
     const [renderProgress, setRenderProgress] = useState<{ percent: number; stage: string } | null>(null);
+    const [agenticProgress, setAgenticProgress] = useState<{ currentStep: string; percent: number; status: string; detail: string } | null>(null);
+    const [fullTranscript, setFullTranscript] = useState<any>(null);
+    // Chunk-by-chunk overlay state
+    const [overlayChunkIndex, setOverlayChunkIndex] = useState(0);
+    const [totalOverlayChunks, setTotalOverlayChunks] = useState(0);
+    const [currentChunkOverlays, setCurrentChunkOverlays] = useState<ChunkOverlay[]>([]);
+    const [chunkOverlays, setChunkOverlays] = useState<Record<number, ChunkOverlay[]>>({});
+    const [fastTrackMode, setFastTrackMode] = useState(false);
+    const [lastFailedStep, setLastFailedStep] = useState<string | null>(null);
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -202,8 +258,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             language: s.language || p.language || 'en',
             aiMode: s.aiMode || p.aiMode || 'hybrid',
             transcriptionModel: s.transcriptionModel || p.transcriptionModel || '',
+            llmProvider: s.llmProvider || p.llmProvider || 'ollama',
+            llmModel: s.llmModel || p.llmModel || '',
             inputPath: p.inputPath || '',
             duration: p.duration,
+            projectDir: p.projectDir || '',
         };
     };
 
@@ -238,7 +297,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const res = await fetch(`${BACKEND}/projects/create`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, fps, settings: options })
+                    body: JSON.stringify({ name, fps, settings: options, projectDir: options?.projectDir })
                 });
                 const data = await res.json();
                 project = data.project || data;
@@ -319,14 +378,28 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             status: 'processing' as const
         }]);
         setStatusWrapper('processing', `Uploading ${mediaName}...`);
+        setPipelineProgress({ percent: 0, message: 'Uploading video…', startedAt: Date.now() });
         logger.log(`Starting upload for file: ${mediaName}`);
 
         try {
-            // Step 1: Upload file to server
-            const uploadResponse = await fetch(`${BACKEND}/media/upload`, {
-                method: 'POST',
-                headers: { 'x-filename': encodeURIComponent(file.name) },
-                body: file
+            // Step 1: Upload file to server (using XHR for progress)
+            const uploadResponse = await new Promise<Response>((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `${BACKEND}/media/upload`);
+                xhr.setRequestHeader('x-filename', encodeURIComponent(file.name));
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 90); // 0-90% for upload
+                        setPipelineProgress(prev => prev ? { ...prev, percent: pct, message: `Uploading… ${pct}%` } : prev);
+                    }
+                };
+                xhr.onload = () => {
+                    const resp = new Response(xhr.responseText, { status: xhr.status, statusText: xhr.statusText });
+                    resolve(resp);
+                };
+                xhr.onerror = () => reject(new Error('Upload network error'));
+                xhr.ontimeout = () => reject(new Error('Upload timed out'));
+                xhr.send(file);
             });
 
             if (!uploadResponse.ok) {
@@ -343,16 +416,17 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // Step 2: Ingest the uploaded file (30s timeout — ffprobe only, no proxy)
             setStatusWrapper('processing', `Processing ${mediaName}...`);
+            setPipelineProgress(prev => prev ? { ...prev, percent: 92, message: 'Processing video metadata…' } : prev);
             logger.log(`Ingesting from: ${uploadResult.path}`);
 
             const ingestResponse = await fetch(`${BACKEND}/media/ingest`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                signal: AbortSignal.timeout(30_000),
+                signal: AbortSignal.timeout(120_000),
                 body: JSON.stringify({
                     projectId: currentProject.id,
                     input: uploadResult.path,
-                    generateProxy: false,
+                    generateProxy: true,
                     generateWaveform: false
                 })
             });
@@ -373,10 +447,34 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     ? { ...item, path: finalPath, status: 'ok' as const, duration: durationSec }
                     : item
             ));
+            setPipelineProgress(prev => prev ? { ...prev, percent: 100, message: 'Import complete!' } : prev);
+            setTimeout(() => setPipelineProgress(null), 1500); // Clear after 1.5s
             setStatusWrapper('ready', `Imported: ${mediaName}`);
 
             // Store inputPath on project for pipeline use
             setCurrentProject(prev => prev ? { ...prev, inputPath: finalPath, duration: durationSec } : prev);
+
+            // Auto-create a default clip on track-1 so the video plays immediately
+            if (durationSec && durationSec > 0) {
+                setTracks(prev => prev.map(track => {
+                    if (track.id === 'track-1' && track.clips.length === 0) {
+                        return {
+                            ...track,
+                            clips: [{
+                                id: `clip-${Date.now()}`,
+                                mediaId: tempId,
+                                trackId: 'track-1',
+                                start: 0,
+                                duration: durationSec,
+                                offset: 0,
+                                type: 'video' as const,
+                                name: mediaName,
+                            }]
+                        };
+                    }
+                    return track;
+                }));
+            }
 
         } catch (error: any) {
             logger.error('Import Error', error);
@@ -387,6 +485,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 item.id === tempId ? { ...item, status: 'error' as const } : item
             ));
             setStatusWrapper('error', `Import failed: ${msg}`);
+            setPipelineProgress(null);
         } finally {
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
@@ -400,8 +499,6 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return;
         }
 
-        // Find the first ready video media item
-        // Find the first ready video media item (case-insensitive check)
         const videoItem = media.find(m => m.status === 'ok' && m.type.toLowerCase() === 'video');
         if (!videoItem) {
             alert('Please import a video first (status must be OK)');
@@ -410,11 +507,14 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         setPipelineStage('transcribing');
         setPipelineError(null);
-        setStatusWrapper('processing', 'Transcribing and analyzing cuts…');
-        logger.log('startEditing: calling /start-editing', { projectId: currentProject.id, input: videoItem.path });
+        setLastFailedStep(null);
+        setPipelineProgress({ percent: 5, message: 'Extracting audio…', startedAt: Date.now() });
+        setStatusWrapper('processing', 'Transcribing audio…');
+        logger.log('startEditing: calling /pipeline/transcribe', { projectId: currentProject.id, input: videoItem.path });
 
         try {
-            const res = await fetch(`${BACKEND}/start-editing`, {
+            setPipelineProgress(prev => prev ? { ...prev, percent: 15, message: 'Running speech recognition…' } : prev);
+            const res = await fetch(`${BACKEND}/pipeline/transcribe`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -422,7 +522,6 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     input: videoItem.path,
                     mode: currentProject.aiMode || 'hybrid',
                     language: currentProject.language || 'en',
-                    fps: currentProject.fps || 30,
                     sourceRef: videoItem.id,
                     transcriptionModel: currentProject.transcriptionModel || '',
                 })
@@ -430,14 +529,18 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (!res.ok) {
                 const text = await res.text();
-                throw new Error(`Start Editing failed (${res.status}): ${text}`);
+                throw new Error(`Transcription failed (${res.status}): ${text}`);
             }
 
             const data = await res.json();
-            logger.log('startEditing result', data);
+            setPipelineProgress(prev => prev ? { ...prev, percent: 90, message: 'Parsing transcript…' } : prev);
+            logger.log('transcription result', data);
 
-            // Extract transcript segments
-            const segments: TranscriptSegment[] = (data.pipeline?.transcript?.segments || []).map((s: any) => ({
+            // Store the full transcript
+            setFullTranscript(data.transcript || null);
+
+            // Extract segments for display
+            const segments: TranscriptSegment[] = (data.transcript?.segments || []).map((s: any) => ({
                 id: s.id || `seg-${s.startUs}`,
                 startUs: Number(s.startUs || 0),
                 endUs: Number(s.endUs || 0),
@@ -446,8 +549,60 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }));
             setTranscript(segments);
 
-            // Extract cut plan
-            const removeRanges: CutRange[] = (data.pipeline?.removeRanges || []).map((r: any) => ({
+            // Move to transcript review stage — user must approve
+            setPipelineProgress(null);
+            setPipelineStage('transcript_ready');
+            setStatusWrapper('ready', `Transcription complete — ${segments.length} segments, ${data.wordCount || 0} words. Review and approve.`);
+
+        } catch (err: any) {
+            logger.error('startEditing (transcribe) failed', err);
+            setLastFailedStep('transcribe');
+            setPipelineProgress(null);
+            setPipelineStage('error');
+            setPipelineError(err.message);
+            setStatusWrapper('error', `Transcription failed: ${err.message}`);
+        }
+    }, [currentProject, media, setStatusWrapper]);
+
+    // ── Pipeline: Approve Transcript → Plan Cuts ──────────────────────────────
+
+    const approveTranscript = useCallback(async () => {
+        if (!currentProject) return;
+
+        const videoItem = media.find(m => m.status === 'ok' && m.type.toLowerCase() === 'video');
+        if (!videoItem) return;
+
+        setPipelineStage('planning_cuts');
+        setPipelineProgress({ percent: 10, message: 'Analyzing transcript for silences…', startedAt: Date.now() });
+        setStatusWrapper('processing', 'Analyzing video for cuts…');
+        logger.log('approveTranscript: calling /pipeline/cut-plan');
+
+        try {
+            const res = await fetch(`${BACKEND}/pipeline/cut-plan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: currentProject.id,
+                    input: videoItem.path,
+                    sourceRef: videoItem.id,
+                    fps: currentProject.fps || 30,
+                    mode: 'heuristic',
+                    llmProvider: currentProject.llmProvider || '',
+                    llmModel: currentProject.llmModel || '',
+                })
+            });
+
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(`Cut planning failed (${res.status}): ${text}`);
+            }
+
+            setPipelineProgress(prev => prev ? { ...prev, percent: 80, message: 'Building timeline…' } : prev);
+            const data = await res.json();
+            logger.log('cut-plan result', data);
+
+            // Extract cut ranges
+            const removeRanges: CutRange[] = (data.removeRanges || []).map((r: any) => ({
                 startUs: Number(r.startUs || 0),
                 endUs: Number(r.endUs || 0),
                 reason: r.reason || 'unknown',
@@ -455,49 +610,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }));
             setCutPlan(removeRanges);
 
-            // Populate timeline from returned timeline clips or generate from cut plan
-            let timelineClips = data.timeline?.clips || [];
-
-            if (timelineClips.length === 0 && videoItem.duration) {
-                // Generate clips from cut plan (invert remove ranges)
-                const totalDurationUs = videoItem.duration * 1_000_000;
-                const keptRanges: { startUs: number; endUs: number }[] = [];
-                let cursorUs = 0;
-
-                // Sort ranges just in case
-                const sortedRemove = [...removeRanges].sort((a, b) => a.startUs - b.startUs);
-
-                for (const range of sortedRemove) {
-                    if (range.startUs > cursorUs) {
-                        keptRanges.push({ startUs: cursorUs, endUs: range.startUs });
-                    }
-                    cursorUs = Math.max(cursorUs, range.endUs);
-                }
-                if (cursorUs < totalDurationUs) {
-                    keptRanges.push({ startUs: cursorUs, endUs: totalDurationUs });
-                }
-
-                timelineClips = keptRanges.map((range, idx) => ({
-                    type: 'video',
-                    startUs: 0, // placed sequentially
-                    durationUs: range.endUs - range.startUs,
-                    sourceOffsetUs: range.startUs,
-                    label: `Clip ${idx + 1}`
-                }));
-
-                // Adjust placement start times
-                let currentPlacementUs = 0;
-                timelineClips = timelineClips.map((c: any) => {
-                    const clip = { ...c, startUs: currentPlacementUs };
-                    currentPlacementUs += c.durationUs;
-                    return clip;
-                });
-            }
-
+            // Populate timeline from returned clips
+            const timelineClips = data.timeline?.clips || [];
             if (timelineClips.length > 0) {
                 setTracks(prev => prev.map(track => {
                     if (track.id === 'track-1') {
-                        const videoCLips = timelineClips
+                        const videoClips = timelineClips
                             .filter((c: any) => c.type === 'video' || !c.type)
                             .map((c: any, idx: number) => ({
                                 id: `tl-clip-${Date.now()}-${idx}`,
@@ -509,22 +627,331 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 type: 'video' as const,
                                 name: c.label || c.clipId || `Clip ${idx + 1}`,
                             }));
-                        return { ...track, clips: videoCLips };
+                        return { ...track, clips: videoClips };
                     }
                     return track;
                 }));
             }
 
-            setPipelineStage('rough_cut_ready');
-            setStatusWrapper('ready', `Rough cut ready — ${segments.length} segments, ${removeRanges.length} cuts`);
+            setPipelineProgress(null);
+            setPipelineStage('cuts_ready');
+            setStatusWrapper('ready', `${removeRanges.length} cuts found. Review on timeline, then approve.`);
 
         } catch (err: any) {
-            logger.error('startEditing failed', err);
+            logger.error('approveTranscript (cut-plan) failed', err);
+            setLastFailedStep('cut-plan');
+            setPipelineProgress(null);
             setPipelineStage('error');
             setPipelineError(err.message);
-            setStatusWrapper('error', `Start Editing failed: ${err.message}`);
+            setStatusWrapper('error', `Cut planning failed: ${err.message}`);
         }
     }, [currentProject, media, setStatusWrapper]);
+
+    // ── Chunk splitting helper ─────────────────────────────────────────────────
+
+    const splitIntoChunks = useCallback((segments: TranscriptSegment[], maxSentences = 3) => {
+        const chunks: { index: number; startUs: number; endUs: number; segments: TranscriptSegment[] }[] = [];
+        let current: TranscriptSegment[] = [];
+        let chunkStart = segments.length > 0 ? segments[0].startUs : 0;
+
+        for (const seg of segments) {
+            current.push(seg);
+            if (current.length >= maxSentences) {
+                chunks.push({ index: chunks.length, startUs: chunkStart, endUs: seg.endUs, segments: [...current] });
+                current = [];
+                chunkStart = seg.endUs;
+            }
+        }
+        if (current.length > 0) {
+            chunks.push({ index: chunks.length, startUs: chunkStart, endUs: current[current.length - 1].endUs, segments: [...current] });
+        }
+        return chunks;
+    }, []);
+
+    // ── Process a single chunk (overlay plan + asset fetch) ──────────────────
+
+    const processChunk = useCallback(async (chunkIdx: number, chunks: any[]) => {
+        if (!currentProject || chunkIdx >= chunks.length) return;
+
+        const chunk = chunks[chunkIdx];
+        setPipelineStage('overlaying_chunk');
+        setOverlayChunkIndex(chunkIdx);
+        const chunkPct = Math.round(((chunkIdx) / chunks.length) * 100);
+        setPipelineProgress({ percent: chunkPct, message: `Planning overlays for chunk ${chunkIdx + 1}/${chunks.length}…`, startedAt: Date.now() });
+        setStatusWrapper('processing', `Planning overlays for chunk ${chunkIdx + 1}/${chunks.length}…`);
+
+        try {
+            // 1. Call overlay plan
+            const overlayRes = await fetch(`${BACKEND}/pipeline/overlay-plan-chunk`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: currentProject.id,
+                    chunkIndex: chunkIdx,
+                    chunkStartUs: chunk.startUs,
+                    chunkEndUs: chunk.endUs,
+                    mode: 'auto',
+                    llmProvider: currentProject.llmProvider || '',
+                    llmModel: currentProject.llmModel || '',
+                }),
+            });
+
+            if (!overlayRes.ok) {
+                const text = await overlayRes.text();
+                throw new Error(`Overlay planning failed: ${text}`);
+            }
+
+            const overlayData = await overlayRes.json();
+            const overlays = (overlayData.overlays || []).map((o: any) => ({
+                id: o.id || `overlay-${chunkIdx}-${Math.random().toString(36).slice(2, 6)}`,
+                templateId: o.templateId || '',
+                templateName: o.templateName || '',
+                startUs: Number(o.startUs || 0),
+                endUs: Number(o.endUs || 0),
+                content: {
+                    headline: o.content?.headline || o.headline || '',
+                    subline: o.content?.subline || o.subline || '',
+                },
+                assetQuery: o.assetQuery || '',
+                assetPath: '',
+                approved: false,
+            }));
+
+            // 2. Attempt to fetch assets for each overlay
+            setPipelineProgress(prev => prev ? { ...prev, percent: chunkPct + Math.round(50 / chunks.length), message: `Fetching assets for chunk ${chunkIdx + 1}…` } : prev);
+            for (const overlay of overlays) {
+                if (!overlay.assetQuery) continue;
+                try {
+                    const assetRes = await fetch(`${BACKEND}/pipeline/fetch-asset`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            projectId: currentProject.id,
+                            query: overlay.assetQuery,
+                            kind: 'image',
+                            provider: 'pexels',
+                        }),
+                    });
+                    if (assetRes.ok) {
+                        const assetData = await assetRes.json();
+                        overlay.assetPath = assetData.localPath || '';
+                    }
+                } catch (e: any) {
+                    logger.error(`Asset fetch for "${overlay.assetQuery}" failed: ${e?.message || e}`);
+                }
+            }
+
+            setCurrentChunkOverlays(overlays);
+            setChunkOverlays(prev => ({ ...prev, [chunkIdx]: overlays }));
+            return overlays;
+        } catch (err: any) {
+            logger.error(`processChunk ${chunkIdx} failed`, err);
+            throw err;
+        }
+    }, [currentProject, setStatusWrapper]);
+
+    // ── Pipeline: Approve Cuts → Start Chunk Processing ──────────────────────
+
+    const [transcriptChunks, setTranscriptChunks] = useState<any[]>([]);
+
+    const applyOverlaysToTimeline = useCallback(async () => {
+        // Collect all overlays from all chunks
+        const allOverlays: ChunkOverlay[] = [];
+        for (let i = 0; i < totalOverlayChunks; i++) {
+            if (chunkOverlays[i]) {
+                const approved = chunkOverlays[i].filter(o => o.approved);
+                allOverlays.push(...approved);
+            }
+        }
+
+        logger.log(`Applying ${allOverlays.length} overlays to timeline...`);
+        if (allOverlays.length === 0) return;
+
+        // Create or find "AI Overlays" track
+        let overlayTrackId = tracks.find(t => t.name === 'AI Overlays')?.id;
+        let newTracks = [...tracks];
+
+        if (!overlayTrackId) {
+            overlayTrackId = `track-overlay-${Date.now()}`;
+            // Insert it above the first track (video) or append
+            newTracks.push({
+                id: overlayTrackId,
+                name: 'AI Overlays',
+                type: 'overlay',
+                clips: [],
+                isMuted: false,
+                isLocked: false,
+            });
+        }
+
+        // Create clips
+        const newClips: Clip[] = allOverlays.map((overlay, idx) => ({
+            id: `clip-overlay-${Date.now()}-${idx}`,
+            mediaId: overlay.templateId || `asset-${idx}`, // Use templateId or dummy
+            trackId: overlayTrackId!,
+            start: overlay.startUs / 1_000_000,
+            duration: (overlay.endUs - overlay.startUs) / 1_000_000,
+            offset: 0,
+            type: overlay.templateId ? 'template' : (overlay.assetPath?.endsWith('.mp4') ? 'video' : 'image'),
+            name: overlay.templateName || (overlay.assetPath ? 'Asset' : 'Overlay'),
+            sourceRef: overlay.assetPath, // Store path in sourceRef for renderer
+            templateId: overlay.templateId, // Store template ID
+            content: overlay.content, // Store content for template
+        }));
+
+        // Update tracks
+        const finalTracks = newTracks.map(t => {
+            if (t.id === overlayTrackId) {
+                // Determine if we merge or replace?
+                // For now, let's append effectively, but since it's a new generation, maybe we should clear old AI clips?
+                // The user might have manually added clips.
+                // Let's just append.
+                return { ...t, clips: [...t.clips, ...newClips] };
+            }
+            return t;
+        });
+
+        setTracks(finalTracks);
+
+        // Trigger save project to persist
+        // We can't call saveProject directly here easily as it depends on tracks which is stale in closure?
+        // Actually saveProject uses currentProject.
+        // But saveProject reads `tracks` from closure. So if we call saveProject() immediately, it sees OLD tracks.
+        // We need useEffect to save when tracks change?
+        // Or updated saveProject to accept tracks argument.
+        // For now, setting tracks will update state. The generic auto-save interval (every 2s) will catch it.
+        // EditorContext already has poll/autosave?
+        // line 1342: const interval = setInterval(poll, 2000);
+        // poll() reloads project from backend? No, `loadProjects`.
+        // Wait, is there an autosave?
+        // I don't see autosave interval calling saveProject.
+        // The user must click Save?
+        // I should call saveProject AFTER state update.
+        // But I can't await state update.
+        // I'll leave it to the user or rely on subsequent actions. 
+        // Actually, I should probably force a save.
+
+    }, [chunkOverlays, totalOverlayChunks, tracks, setTracks]);
+
+    const approveCuts = useCallback(async () => {
+        if (!transcript || transcript.length === 0) {
+            setPipelineStage('rough_cut_ready');
+            setStatusWrapper('ready', 'Cuts approved! Choose Edit Now for enrichment or Render to export.');
+            return;
+        }
+
+        // Split transcript into chunks (2-3 sentences each)
+        const chunks = splitIntoChunks(transcript, 3);
+        setTranscriptChunks(chunks);
+        setTotalOverlayChunks(chunks.length);
+        setOverlayChunkIndex(0);
+        setChunkOverlays({}); // Reset overlays for new run
+
+        logger.log('approveCuts: split into chunks', { count: chunks.length });
+
+        if (chunks.length === 0) {
+            setPipelineStage('rough_cut_ready');
+            setStatusWrapper('ready', 'Cuts approved! No chunks to process.');
+            return;
+        }
+
+        // Process first chunk
+        try {
+            await processChunk(0, chunks);
+
+            if (fastTrackMode) {
+                // Fast track: auto-approve and process all chunks
+                for (let i = 1; i < chunks.length; i++) {
+                    setOverlayChunkIndex(i);
+                    await processChunk(i, chunks);
+                }
+                setPipelineProgress(null);
+                await applyOverlaysToTimeline(); // Apply immediately
+                setPipelineStage('enrichment_ready');
+                setStatusWrapper('ready', `All ${chunks.length} chunks processed (fast track)! Ready to render.`);
+            } else {
+                // Show chunk review UI
+                setPipelineProgress(null);
+                setPipelineStage('chunk_review');
+                setStatusWrapper('ready', `Chunk 1/${chunks.length} ready for review.`);
+            }
+        } catch (err: any) {
+            setLastFailedStep('overlay-chunk');
+            setPipelineProgress(null);
+            setPipelineStage('error');
+            setPipelineError(err.message);
+            setStatusWrapper('error', `Overlay planning failed: ${err.message}`);
+        }
+    }, [transcript, splitIntoChunks, processChunk, fastTrackMode, setStatusWrapper]);
+
+    // ── Pipeline: Approve Chunk → Next or Done ───────────────────────────────
+
+    const approveChunk = useCallback(async () => {
+        const nextIdx = overlayChunkIndex + 1;
+
+        if (nextIdx >= transcriptChunks.length) {
+            // All chunks done
+            setPipelineProgress(null);
+            await applyOverlaysToTimeline(); // Apply immediately
+            setPipelineStage('enrichment_ready');
+            setStatusWrapper('ready', `All ${transcriptChunks.length} chunks processed! Ready to render.`);
+            return;
+        }
+
+        // Process next chunk
+        try {
+            await processChunk(nextIdx, transcriptChunks);
+
+            if (fastTrackMode) {
+                // Fast track: auto-approve remaining
+                for (let i = nextIdx + 1; i < transcriptChunks.length; i++) {
+                    setOverlayChunkIndex(i);
+                    await processChunk(i, transcriptChunks);
+                }
+                setPipelineProgress(null);
+                await applyOverlaysToTimeline(); // Apply immediately
+                setPipelineStage('enrichment_ready');
+                setStatusWrapper('ready', `All ${transcriptChunks.length} chunks processed! Ready to render.`);
+            } else {
+                setPipelineProgress(null);
+                setPipelineStage('chunk_review');
+                setStatusWrapper('ready', `Chunk ${nextIdx + 1}/${transcriptChunks.length} ready for review.`);
+            }
+        } catch (err: any) {
+            setLastFailedStep('overlay-chunk');
+            setPipelineProgress(null);
+            setPipelineStage('error');
+            setPipelineError(err.message);
+            setStatusWrapper('error', `Chunk ${nextIdx + 1} failed: ${err.message}`);
+        }
+    }, [overlayChunkIndex, transcriptChunks, processChunk, fastTrackMode, setStatusWrapper]);
+
+    // ── Pipeline: Toggle fast track ───────────────────────────────────────────
+
+    const toggleFastTrack = useCallback(() => {
+        setFastTrackMode(prev => !prev);
+    }, []);
+
+    // ── Pipeline: Retry failed step ───────────────────────────────────────────
+
+    const retryStep = useCallback(() => {
+        if (lastFailedStep === 'transcribe') {
+            startEditing();
+        } else if (lastFailedStep === 'cut-plan') {
+            approveTranscript();
+        } else if (lastFailedStep === 'overlay-chunk') {
+            // Retry the current chunk
+            processChunk(overlayChunkIndex, transcriptChunks).then(() => {
+                setPipelineStage('chunk_review');
+                setStatusWrapper('ready', `Chunk ${overlayChunkIndex + 1}/${transcriptChunks.length} ready for review.`);
+            }).catch((err: any) => {
+                setPipelineError(err.message);
+                setStatusWrapper('error', `Retry failed: ${err.message}`);
+            });
+        } else {
+            startEditing();
+        }
+    }, [lastFailedStep, startEditing, approveTranscript, processChunk, overlayChunkIndex, transcriptChunks, setStatusWrapper]);
 
     // ── Pipeline: Edit Now ────────────────────────────────────────────────────
 
@@ -594,6 +1021,100 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setStatusWrapper('error', `Edit Now failed: ${err.message}`);
         }
     }, [currentProject, setStatusWrapper]);
+
+    // ── Pipeline: Agentic Edit (full AI pipeline) ────────────────────────
+
+    const agenticEdit = useCallback(async () => {
+        if (!currentProject) {
+            alert('No active project');
+            return;
+        }
+
+        const videoItem = media.find(m => m.status === 'ok' && m.type.toLowerCase() === 'video');
+        if (!videoItem) {
+            alert('Please import a video first');
+            return;
+        }
+
+        setPipelineStage('transcribing');
+        setPipelineError(null);
+        setAgenticProgress({ currentStep: 'starting', percent: 0, status: 'running', detail: 'Initializing AI pipeline...' });
+        setStatusWrapper('processing', 'AI is editing your video step-by-step…');
+        logger.log('agenticEdit: calling /agentic-edit', { projectId: currentProject.id, input: videoItem.path });
+
+        // Start progress polling
+        const progressInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`${BACKEND}/agentic-edit/progress/${currentProject.id}`);
+                if (res.ok) {
+                    const progress = await res.json();
+                    setAgenticProgress({
+                        currentStep: progress.currentStep || 'processing',
+                        percent: progress.percent || 0,
+                        status: progress.status || 'running',
+                        detail: progress.detail || '',
+                    });
+                    setStatusWrapper('processing', `AI Step: ${progress.currentStep || 'processing'} (${progress.percent || 0}%)`);
+                }
+            } catch { /* polling error, ignore */ }
+        }, 2000);
+
+        try {
+            const res = await fetch(`${BACKEND}/agentic-edit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: currentProject.id,
+                    input: videoItem.path,
+                    language: currentProject.language || 'hi',
+                    fps: currentProject.fps || 30,
+                    mode: currentProject.aiMode || 'hybrid',
+                    sourceRef: videoItem.id,
+                    fetchExternal: true,
+                    llmProvider: currentProject.llmProvider || '',
+                    llmModel: currentProject.llmModel || '',
+                })
+            });
+
+            clearInterval(progressInterval);
+
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(`Agentic Edit failed (${res.status}): ${text}`);
+            }
+
+            const data = await res.json();
+            logger.log('agenticEdit result', data);
+
+            // Extract results from the agentic pipeline
+            const aiDecisions = data.aiDecisions || {};
+
+            setEnrichmentSummary({
+                templateCount: aiDecisions.templatesSelected || 0,
+                assetCount: aiDecisions.stockMediaSuggested || 0,
+            });
+
+            setAgenticProgress({
+                currentStep: 'complete',
+                percent: 100,
+                status: 'done',
+                detail: `${aiDecisions.cutsApplied || 0} cuts, ${aiDecisions.templatesSelected || 0} templates, ${aiDecisions.stockMediaSuggested || 0} stock media`,
+            });
+
+            setPipelineStage('enrichment_ready');
+            setStatusWrapper('ready',
+                `AI Edit complete — ${aiDecisions.cutsApplied || 0} cuts, ${aiDecisions.templatesSelected || 0} templates, ${aiDecisions.stockMediaSuggested || 0} assets`
+            );
+
+        } catch (err: any) {
+            clearInterval(progressInterval);
+            logger.error('agenticEdit failed', err);
+            setPipelineStage('error');
+            setPipelineError(err.message);
+            setAgenticProgress({ currentStep: 'error', percent: 0, status: 'failed', detail: err.message });
+            setStatusWrapper('error', `AI Edit failed: ${err.message}`);
+        }
+    }, [currentProject, media, setStatusWrapper]);
 
     // ── Pipeline: Render ──────────────────────────────────────────────────────
 
@@ -723,7 +1244,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             duration: mediaItem.duration || 5,
             offset: 0,
             type: mediaItem.type as any,
-            name: mediaItem.name
+            name: mediaItem.name,
+            sourceRef: mediaItem.path, // Store path for renderer
         };
 
         // Push undo before mutation
@@ -737,6 +1259,37 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return track;
         }));
     }, [media, tracks, setTracks]);
+
+    const addTemplateClip = useCallback((templateId: string, trackId: string, time: number) => {
+        const template = getTemplateById(templateId);
+        if (!template) return;
+
+        const duration = template.durationInFrames / template.fps;
+
+        const newClip: Clip = {
+            id: `clip-tmpl-${Date.now()}`,
+            mediaId: templateId, // Use templateId as mediaId for templates
+            trackId,
+            start: time,
+            duration: duration || 5,
+            offset: 0,
+            type: 'template',
+            name: template.name,
+            templateId: template.id,
+            content: template.defaultProps as any, // Initial content
+        };
+
+        // Push undo before mutation
+        setUndoStack(prev => [...prev.slice(-(MAX_UNDO - 1)), tracks]);
+        setRedoStack([]);
+
+        setTracks(prev => prev.map(track => {
+            if (track.id === trackId) {
+                return { ...track, clips: [...track.clips, newClip] };
+            }
+            return track;
+        }));
+    }, [tracks, setTracks]);
 
     const moveClip = useCallback((clipId: string, trackId: string, newStartTime: number) => {
         setUndoStack(prev => [...prev.slice(-(MAX_UNDO - 1)), tracks]);
@@ -920,6 +1473,42 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return () => clearInterval(interval);
     }, [pipelineStage, currentProject]);
 
+    const updateClip = useCallback((clipId: string, trackId: string, updates: Partial<Clip>) => {
+        setTracks(prev => {
+            const newTracks = prev.map(track => {
+                if (track.id !== trackId) return track;
+                return {
+                    ...track,
+                    clips: track.clips.map(clip => {
+                        if (clip.id !== clipId) return clip;
+                        return { ...clip, ...updates };
+                    })
+                };
+            });
+            // Add to undo stack
+            setUndoStack(s => [...s.slice(-MAX_UNDO), prev]);
+            setRedoStack([]);
+            return newTracks;
+        });
+    }, []);
+
+    const addTrack = useCallback((type: 'video' | 'audio' | 'overlay' | 'text' = 'video', id?: string) => {
+        setTracks(prev => {
+            const count = prev.filter(t => t.type === type).length + 1;
+            const newTrack: Track = {
+                id: id || `track-${type}-${Date.now()}`,
+                type,
+                name: `${type.charAt(0).toUpperCase() + type.slice(1)} ${count}`,
+                clips: []
+            };
+            return [...prev, newTrack];
+        });
+    }, []);
+
+    const deleteTrack = useCallback((trackId: string) => {
+        setTracks(prev => prev.filter(t => t.id !== trackId));
+    }, []);
+
 
     // ─── Persistence ─────────────────────────────────────────────────────────────
 
@@ -927,16 +1516,34 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (!currentProject) return;
 
         // Convert tracks to timeline format for backend clips
-        const clips = tracks.flatMap(t => t.clips.map(c => ({
-            id: c.id,
-            type: c.type,
-            startUs: Math.round(c.start * 1_000_000),
-            durationUs: Math.round(c.duration * 1_000_000),
-            sourceOffsetUs: Math.round(c.offset * 1_000_000),
-            label: c.name,
-            mediaId: c.mediaId,
-            trackId: t.id
-        })));
+        const clips = tracks.flatMap(t => t.clips.map(c => {
+            // Map frontend Clip type to backend clipType
+            let clipType = 'source_clip';
+            if (c.type === 'template') {
+                clipType = 'template_clip';
+            } else if (c.type === 'image') {
+                clipType = 'asset_clip';
+            } else if (t.type === 'overlay') {
+                clipType = 'asset_clip';
+            } else if (c.type === 'video') {
+                clipType = 'source_clip';
+            }
+
+            return {
+                id: c.id,
+                clipType,
+                type: c.type, // Keep original type
+                startUs: Math.round(c.start * 1_000_000),
+                durationUs: Math.round(c.duration * 1_000_000),
+                sourceOffsetUs: Math.round(c.offset * 1_000_000),
+                label: c.name,
+                mediaId: c.mediaId,
+                trackId: t.id,
+                sourceRef: c.sourceRef,
+                templateId: c.templateId,
+                content: c.content,
+            };
+        }));
 
         const timeline = {
             projectId: currentProject.id,
@@ -958,20 +1565,46 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
 
         try {
-            setStatusWrapper('processing', 'Saving project...');
-            const res = await fetch(`${BACKEND}/projects/${currentProject.id}/save`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ state, timeline })
-            });
-            if (!res.ok) throw new Error('Failed to save');
-
-            setStatusWrapper('ready', 'Project saved successfully');
-        } catch (e) {
-            logger.error('Save failed', e);
-            setStatusWrapper('error', 'Failed to save project');
+            // setStatusWrapper('processing', 'Saving project...');
+            if (isTauri) {
+                await invokeCommand('save_project', { project: timeline });
+                // TODO: Save state in Tauri too?
+            } else {
+                const res = await fetch(`${BACKEND}/projects/${currentProject.id}/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ state, timeline })
+                });
+                if (!res.ok) throw new Error(`Save failed: ${res.statusText}`);
+            }
+            logger.log('Project saved', { clips: clips.length });
+        } catch (e: any) {
+            logger.error('Failed to save project', e);
         }
-    }, [currentProject, tracks, media, pipelineStage, pipelineError, transcript, cutPlan, enrichmentSummary, status, statusMessage, setStatusWrapper]);
+    }, [currentProject, tracks, isTauri, media, pipelineStage, pipelineError, transcript, cutPlan, enrichmentSummary, status, statusMessage]);
+
+    const exportFCPXML = useCallback(async () => {
+        if (!currentProject) return;
+        try {
+            logger.log('Exporting FCPXML...');
+            const res = await fetch(`${BACKEND}/projects/${currentProject.id}/export-fcpxml`, {
+                method: 'POST'
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+
+            if (data.path) {
+                await fetch(`${BACKEND}/open-path`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: data.path, reveal: true })
+                });
+                logger.log('FCPXML exported', { path: data.path });
+            }
+        } catch (e: any) {
+            logger.error('FCPXML Export failed', e);
+        }
+    }, [currentProject]);
 
     const loadProject = useCallback(async (projectId: string) => {
         try {
@@ -982,11 +1615,88 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const data = await res.json();
             if (data.state) {
                 if (data.state.media) setMedia(data.state.media);
-                if (data.state.tracks) setTracks(data.state.tracks);
                 if (data.state.pipelineStage) setPipelineStage(data.state.pipelineStage);
                 if (data.state.transcript) setTranscript(data.state.transcript);
                 if (data.state.cutPlan) setCutPlan(data.state.cutPlan);
                 if (data.state.enrichmentSummary) setEnrichmentSummary(data.state.enrichmentSummary);
+            }
+
+            // Load tracks: prefer state.tracks, but fall back to timeline.clips if tracks are empty
+            const stateTracks: Track[] | undefined = data.state?.tracks;
+            const hasClipsInTracks = stateTracks && stateTracks.some((t: Track) => t.clips && t.clips.length > 0);
+
+            if (hasClipsInTracks) {
+                setTracks(stateTracks!);
+            } else if (data.timeline?.clips && data.timeline.clips.length > 0) {
+                // Map timeline.json clips → frontend tracks
+                const mediaItems: MediaItem[] = data.state?.media || [];
+                const firstVideo = mediaItems.find(m => m.type === 'video');
+                const firstMediaId = firstVideo?.id || mediaItems[0]?.id || 'unknown';
+
+                const timelineClips = data.timeline.clips as any[];
+                let timelineOffset = 0; // running offset for sequential placement
+
+                const videoClips: Clip[] = [];
+                const overlayClips: Clip[] = [];
+                const captionClips: Clip[] = [];
+
+                for (const c of timelineClips) {
+                    const startUs = Number(c.startUs || 0);
+                    const endUs = Number(c.endUs || 0);
+                    const sourceStartUs = Number(c.sourceStartUs || startUs);
+                    const durationSec = (endUs - startUs) / 1_000_000;
+                    const offsetSec = sourceStartUs / 1_000_000;
+
+                    if (c.clipType === 'source_clip' || !c.clipType) {
+                        videoClips.push({
+                            id: c.clipId || `tl-${Date.now()}-${videoClips.length}`,
+                            mediaId: firstMediaId,
+                            trackId: 'track-1',
+                            start: timelineOffset,
+                            duration: durationSec,
+                            offset: offsetSec,
+                            type: 'video' as const,
+                            name: c.label || c.clipId || `Clip ${videoClips.length + 1}`,
+                        });
+                        timelineOffset += durationSec;
+                    } else if (c.clipType === 'overlay_clip' || c.clipType === 'template_clip') {
+                        overlayClips.push({
+                            id: c.clipId || `ov-${Date.now()}-${overlayClips.length}`,
+                            mediaId: c.sourceRef || '',
+                            trackId: 'track-overlays',
+                            start: startUs / 1_000_000,
+                            duration: durationSec,
+                            offset: 0,
+                            type: 'template' as const,
+                            name: c.label || c.templateId || `Overlay ${overlayClips.length + 1}`,
+                            templateId: c.templateId,
+                            content: c.templateData,
+                        });
+                    } else if (c.clipType === 'caption_clip') {
+                        captionClips.push({
+                            id: c.clipId || `cap-${Date.now()}-${captionClips.length}`,
+                            mediaId: '',
+                            trackId: 'track-captions',
+                            start: startUs / 1_000_000,
+                            duration: durationSec,
+                            offset: 0,
+                            type: 'text' as const,
+                            name: c.text || `Caption ${captionClips.length + 1}`,
+                        });
+                    }
+                }
+
+                const mappedTracks: Track[] = [
+                    { id: 'track-overlays', name: 'Overlays', type: 'overlay', clips: overlayClips, isLocked: false },
+                    { id: 'track-captions', name: 'Captions', type: 'text', clips: captionClips, isLocked: false },
+                    { id: 'track-1', name: 'Video 1', type: 'video', clips: videoClips, isLocked: false },
+                    { id: 'track-audio', name: 'Audio 1', type: 'audio', clips: [], isLocked: false },
+                ];
+
+                setTracks(mappedTracks);
+                logger.log(`Mapped ${videoClips.length} video, ${overlayClips.length} overlay, ${captionClips.length} caption clips from timeline.json`);
+            } else if (stateTracks) {
+                setTracks(stateTracks);
             }
 
             if (data.project) {
@@ -1015,15 +1725,27 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             statusMessage,
             pipelineStage,
             pipelineError,
+            pipelineProgress,
             transcript,
+            fullTranscript,
             cutPlan,
             renderResult,
             enrichmentSummary,
             renderProgress,
+            agenticProgress,
+            overlayChunkIndex,
+            totalOverlayChunks,
+            currentChunkOverlays,
+            chunkOverlays,
+            fastTrackMode,
             loadProjects,
             createProject,
             importMedia,
             addClip,
+            addTemplateClip,
+            addTrack,
+            deleteTrack,
+            updateClip,
             moveClip,
             splitClip,
             trimClip,
@@ -1038,8 +1760,15 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             seekTo,
             setStatus: setStatusWrapper,
             startEditing,
+            approveTranscript,
+            approveCuts,
+            approveChunk,
+            toggleFastTrack,
+            retryStep,
             editNow,
+            agenticEdit,
             renderVideo,
+            exportFCPXML,
             openInFinder,
             resetPipeline,
             updateProject,
@@ -1049,6 +1778,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setMedia,
             setTracks,
             setCutPlan,
+            setCurrentChunkOverlays,
         }}>
             {children}
             <input

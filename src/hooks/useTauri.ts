@@ -13,7 +13,8 @@ export type TauriCommand =
     | 'edit_now'
     | 'render'
     | 'model_health'
-    | 'install_model';
+    | 'install_model'
+    | 'save_project';
 
 export const useTauri = () => {
     const _isTauri = isTauri();
@@ -48,7 +49,7 @@ export const useTauri = () => {
             if (!route) throw new Error(`Unknown command: ${cmd}`);
 
             try {
-                const response = await fetch(`http://localhost:43123${route.path}`, {
+                const response = await fetch(`http://127.0.0.1:43123${route.path}`, {
                     method: route.method,
                     headers: { 'Content-Type': 'application/json' },
                     body: route.body ? JSON.stringify(route.body) : undefined

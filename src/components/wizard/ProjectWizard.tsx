@@ -10,6 +10,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
         name: 'My New Project',
+        projectDir: '',
         aspectRatio: '16:9',
         fps: 30,
         resolution: '1080p',
@@ -33,8 +34,26 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
             language: formData.language,
             aiMode: formData.aiMode,
             transcriptionModel: formData.transcriptionModel,
+            projectDir: formData.projectDir || undefined,
         });
         onClose();
+    };
+
+    const handleBrowseFolder = async () => {
+        try {
+            // Try Tauri dialog first
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({ directory: true, title: 'Choose Project Folder' });
+            if (selected) {
+                setFormData(prev => ({ ...prev, projectDir: selected as string }));
+            }
+        } catch {
+            // Fallback: let user type a path
+            const userPath = prompt('Enter the full path for the project folder:', formData.projectDir || '');
+            if (userPath) {
+                setFormData(prev => ({ ...prev, projectDir: userPath }));
+            }
+        }
     };
 
     return (
@@ -58,6 +77,27 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
                                     onChange={handleChange}
                                     autoFocus
                                 />
+                            </div>
+                            <div className="form-group">
+                                <label>Project Folder</label>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <input
+                                        type="text"
+                                        name="projectDir"
+                                        value={formData.projectDir}
+                                        onChange={handleChange}
+                                        placeholder="Leave blank for default location"
+                                        style={{ flex: 1 }}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="btn-secondary btn-sm"
+                                        onClick={handleBrowseFolder}
+                                    >Browse</button>
+                                </div>
+                                <small style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                                    All assets, renders & temp files will live here
+                                </small>
                             </div>
                             <div className="form-group">
                                 <label>Aspect Ratio</label>
@@ -127,6 +167,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
                                     <option value="whisper-base">Whisper Base (Multilingual)</option>
                                     <option value="whisper-small">Whisper Small (Multilingual)</option>
                                     <option value="whisper-medium">Whisper Medium (High Accuracy)</option>
+                                    <option value="sarvam">Sarvam AI (Best for Hindi)</option>
                                 </select>
                             </div>
                             <p className="info-text">

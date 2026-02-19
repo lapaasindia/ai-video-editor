@@ -554,6 +554,150 @@ function buildAssetSuggestions(templatePlacements) {
   return suggestions;
 }
 
+// ── LLM AI helpers (unified provider) ────────────────────────────────────────
+
+import os from 'node:os';
+import { promisify } from 'node:util';
+import { runLLMPrompt, extractJsonFromLLMOutput } from './lib/llm_provider.mjs';
+
+async function generateTemplatePlanWithOllama(segments, catalog, durationUs, llmConfig) {
+  const templateList = catalog.map(t => ({ id: t.id, name: t.name, category: t.category }));
+  const simplifiedSegments = segments.slice(0, 20).map(s => ({
+    startUs: s.startUs,
+    endUs: s.endUs,
+    text: (s.text || '').slice(0, 120)
+  }));
+
+  const prompt = `You are an expert video editor AI specializing in Hindi/Hinglish content. Analyze this transcript and pick the BEST templates for key moments.
+
+Transcript segments:
+${JSON.stringify(simplifiedSegments, null, 1)}
+
+Available templates:
+${JSON.stringify(templateList, null, 1)}
+
+Total video duration: ${Math.round(durationUs / 1_000_000)}s
+
+Rules:
+- Pick 2-6 templates for the most impactful moments
+- Match template style to content (e.g. "stat" for numbers, "quote" for key statements)
+- Generate a catchy Hindi/English headline (max 8 words) from the transcript content
+- Generate a brief subline (max 50 chars)
+- Space templates at least 3 seconds apart
+
+Respond ONLY with this JSON (no markdown):
+{
+  "templatePlacements": [
+    {
+      "templateId": "template-id-from-catalog",
+      "startUs": 0,
+      "endUs": 2000000,
+      "headline": "catchy headline from content",
+      "subline": "brief supporting text",
+      "reason": "why this template fits here"
+    }
+  ]
+}`;
+
+  console.error(`[LLM] Generating AI template plan with ${llmConfig.provider}/${llmConfig.model}...`);
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await runLLMPrompt(llmConfig, prompt, 180000);
+      const result = extractJsonFromLLMOutput(response);
+      const placements = result.templatePlacements || result;
+
+      if (!Array.isArray(placements) || placements.length === 0) {
+        throw new Error('No template placements returned');
+      }
+
+      const catalogMap = new Map(catalog.map(t => [t.id, t]));
+
+      return placements.map((p, idx) => {
+        const template = catalogMap.get(p.templateId) || catalog[idx % catalog.length];
+        return {
+          id: `tpl-placement-${idx + 1}`,
+          templateId: template.id,
+          templateName: template.name,
+          category: template.category,
+          startUs: Math.max(0, Number(p.startUs || 0)),
+          endUs: Math.min(durationUs, Number(p.endUs || p.startUs + 2_000_000)),
+          confidence: 0.85,
+          content: {
+            headline: truncateWords(p.headline || p.text || 'Key moment', 8),
+            subline: truncateChars(p.subline || `${template.category} template`, 52),
+          },
+          aiReason: p.reason || 'AI-selected',
+        };
+      });
+    } catch (e) {
+      console.error(`[Ollama] Template plan attempt ${attempt}:`, e.message);
+      if (attempt === 2) throw e;
+    }
+  }
+}
+
+async function generateStockSuggestionsWithOllama(segments, templatePlacements, llmConfig) {
+  const simplifiedSegments = segments.slice(0, 15).map(s => ({
+    startUs: s.startUs,
+    endUs: s.endUs,
+    text: (s.text || '').slice(0, 100)
+  }));
+
+  const prompt = `You are a video editor AI. Based on these Hindi/Hinglish transcript segments, suggest stock images/videos to use as B-roll.
+
+Transcript:
+${JSON.stringify(simplifiedSegments, null, 1)}
+
+Rules:
+- Suggest 2-5 stock media items
+- For each, provide an ENGLISH search query (stock sites use English)
+- Pick "image" for static concepts, "video" for dynamic/action
+- Queries should be visual and descriptive (e.g. "indian entrepreneur working laptop" not "business")
+- Match the media to what's being discussed in the transcript
+
+Respond ONLY with JSON (no markdown):
+{
+  "suggestions": [
+    {
+      "query": "english search query for stock media",
+      "kind": "image or video",
+      "startUs": 0,
+      "endUs": 2000000,
+      "reason": "why this visual fits the content"
+    }
+  ]
+}`;
+
+  console.error(`[LLM] Generating AI stock media suggestions with ${llmConfig.provider}/${llmConfig.model}...`);
+
+  try {
+    const response = await runLLMPrompt(llmConfig, prompt, 120000);
+    const result = extractJsonFromLLMOutput(response);
+    const suggestions = result.suggestions || result;
+
+    if (!Array.isArray(suggestions)) return [];
+
+    const providers = ['pexels', 'pixabay', 'unsplash'];
+    return suggestions.map((s, idx) => ({
+      id: `asset-${idx + 1}`,
+      provider: providers[idx % providers.length],
+      kind: s.kind === 'video' ? 'video' : 'image',
+      query: s.query || 'stock footage',
+      startUs: Math.max(0, Number(s.startUs || 0)),
+      endUs: Math.max(Number(s.startUs || 0) + 500_000, Number(s.endUs || 0)),
+      effects: {
+        zoom: { type: 'ken-burns', scaleFrom: 1, scaleTo: 1.08, anchor: 'center' },
+      },
+      attribution: { required: true, source: providers[idx % providers.length] },
+      aiReason: s.reason || 'AI-suggested',
+    }));
+  } catch (e) {
+    console.error('[Ollama] Stock suggestion failed:', e.message);
+    return [];
+  }
+}
+
 function clampNumber(value, min, max) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
@@ -1109,7 +1253,10 @@ async function main() {
   const templatePlannerModel =
     readArg('--template-planner-model', '').trim() ||
     process.env.LAPAAS_TEMPLATE_PLANNER_MODEL ||
-    'heuristic-template-planner-v1';
+    'qwen3:1.7b';
+  const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || 'ollama');
+  const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || templatePlannerModel);
+  const llmConfig = { provider: llmProvider, model: llmModel };
   const maxRetries = safeInteger(
     readArg('--max-retries', process.env.LAPAAS_EDIT_NOW_MAX_RETRIES ?? '1'),
     1,
@@ -1127,7 +1274,7 @@ async function main() {
     throw new Error('Missing required argument: --project-id');
   }
 
-  const projectDir = path.resolve('desktop', 'data', projectId);
+  const projectDir = readArg('--project-dir') || path.resolve('desktop', 'data', projectId);
   const transcriptPath = path.join(projectDir, 'transcript.json');
   const timelinePath = path.join(projectDir, 'timeline.json');
   const templatePlanPath = path.join(projectDir, 'template-plan.json');
@@ -1168,13 +1315,41 @@ async function main() {
     const catalog = await tracker.run('template-discovery', () => discoverTemplateCatalog());
 
     const planningStage = await tracker.run('template-planning', async () => {
-      const rawTemplatePlacements = buildTemplatePlacements(transcript?.segments || [], catalog, durationUs);
-      const constrainedPlacementResult = enforceTemplatePlacementConstraints(rawTemplatePlacements, durationUs);
-      const nextTemplatePlacements = constrainedPlacementResult.placements;
-      const nextAssetSuggestions = buildAssetSuggestions(nextTemplatePlacements);
+      let nextTemplatePlacements;
+      let nextAssetSuggestions;
+      const isLLM = templatePlannerModel && !templatePlannerModel.startsWith('heuristic');
+
+      if (isLLM) {
+        try {
+          // AI-driven template selection
+          nextTemplatePlacements = await generateTemplatePlanWithOllama(
+            transcript?.segments || [], catalog, durationUs, llmConfig
+          );
+          console.error(`[AI] Template plan: ${nextTemplatePlacements.length} placements`);
+        } catch (e) {
+          console.error('[AI] Template planning failed, falling back to heuristic:', e.message);
+          nextTemplatePlacements = buildTemplatePlacements(transcript?.segments || [], catalog, durationUs);
+        }
+
+        try {
+          // AI-driven stock media suggestions
+          nextAssetSuggestions = await generateStockSuggestionsWithOllama(
+            transcript?.segments || [], nextTemplatePlacements, llmConfig
+          );
+          console.error(`[AI] Stock suggestions: ${nextAssetSuggestions.length} items`);
+        } catch (e) {
+          console.error('[AI] Stock suggestion failed, falling back to heuristic:', e.message);
+          nextAssetSuggestions = buildAssetSuggestions(nextTemplatePlacements);
+        }
+      } else {
+        nextTemplatePlacements = buildTemplatePlacements(transcript?.segments || [], catalog, durationUs);
+        nextAssetSuggestions = buildAssetSuggestions(nextTemplatePlacements);
+      }
+
+      const constrainedPlacementResult = enforceTemplatePlacementConstraints(nextTemplatePlacements, durationUs);
       return {
         constrainedPlacementResult,
-        nextTemplatePlacements,
+        nextTemplatePlacements: constrainedPlacementResult.placements,
         nextAssetSuggestions,
       };
     });
@@ -1247,7 +1422,7 @@ async function main() {
         fallbackPolicy,
         planner: {
           model: templatePlannerModel,
-          strategy: 'rule-based-template-mapper',
+          strategy: templatePlannerModel.startsWith('heuristic') ? 'rule-based-template-mapper' : 'ollama-ai-planner',
         },
         templatePlacements,
         assetSuggestions: resolvedAssetSuggestions,
@@ -1376,7 +1551,7 @@ async function main() {
       },
       stageDurationsMs,
       error: String(error?.message || error),
-    }).catch(() => {});
+    }).catch(() => { });
 
     await recordProjectTelemetry({
       projectDir,
@@ -1391,7 +1566,7 @@ async function main() {
         maxRetries,
       },
       error: String(error?.message || error),
-    }).catch(() => {});
+    }).catch(() => { });
 
     throw error;
   }

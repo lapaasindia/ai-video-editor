@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { ProjectWizard } from '../wizard/ProjectWizard';
 import { ProjectSettingsModal } from '../modals/ProjectSettingsModal';
-import { getTemplateRegistry, getCategoryLabel, TEMPLATE_CATEGORIES } from '../../templates/registry';
+import { getTemplateRegistry, getCategoryLabel, TEMPLATE_CATEGORIES, TemplateMetadata } from '../../templates/registry';
+import { TemplatePreviewModal } from '../modals/TemplatePreviewModal';
 
 export const ProjectPanel: React.FC = () => {
     const [activeTab, setActiveTab] = useState('project');
@@ -11,7 +12,8 @@ export const ProjectPanel: React.FC = () => {
     const [projectsList, setProjectsList] = useState<any[]>([]);
     const [templateSearch, setTemplateSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState<string>('all');
-    const { currentProject, media, importMedia, backendAvailable, loadProject } = useEditor();
+    const [selectedTemplate, setSelectedTemplate] = useState<TemplateMetadata | null>(null);
+    const { currentProject, media, importMedia, backendAvailable, loadProject, agenticEdit, agenticProgress, pipelineStage, addTemplateClip, addTrack, currentTime, tracks } = useEditor();
 
     const allTemplates = useMemo(() => getTemplateRegistry(), []);
     const filteredTemplates = useMemo(() => {
@@ -26,7 +28,7 @@ export const ProjectPanel: React.FC = () => {
 
     useEffect(() => {
         if (backendAvailable && !currentProject) {
-            fetch('http://localhost:43123/projects')
+            fetch('http://127.0.0.1:43123/projects')
                 .then(res => res.json())
                 .then(data => {
                     if (data.projects) {
@@ -43,6 +45,38 @@ export const ProjectPanel: React.FC = () => {
         if (loadProject) {
             await loadProject(id);
         }
+    };
+
+    const handleAddTemplate = () => {
+        if (!selectedTemplate || !currentProject) return;
+
+        const duration = selectedTemplate.durationInFrames / selectedTemplate.fps;
+        let targetTrackId = '';
+
+        // Try to find a video/overlay track with no overlap at currentTime
+        for (const track of tracks) {
+            if (track.type !== 'video' && track.type !== 'overlay') continue;
+
+            const hasOverlap = track.clips.some(clip => {
+                const clipEnd = clip.start + clip.duration;
+                const newEnd = currentTime + duration;
+                return (currentTime < clipEnd && newEnd > clip.start);
+            });
+
+            if (!hasOverlap) {
+                targetTrackId = track.id;
+                break;
+            }
+        }
+
+        // If no suitable track found, create a new one
+        if (!targetTrackId) {
+            const newId = `track-video-${Date.now()}`;
+            addTrack('video', newId);
+            targetTrackId = newId;
+        }
+
+        addTemplateClip(selectedTemplate.id, targetTrackId, currentTime);
     };
 
     return (
@@ -119,6 +153,23 @@ export const ProjectPanel: React.FC = () => {
                                             <span className="info-label">Settings</span>
                                             <span className="info-value">{currentProject.fps}fps / {currentProject.aspectRatio || '16:9'}</span>
                                         </div>
+                                        {(currentProject as any).projectDir && (
+                                            <div className="info-row">
+                                                <span className="info-label">Folder</span>
+                                                <span
+                                                    className="info-value"
+                                                    title={(currentProject as any).projectDir}
+                                                    style={{ fontSize: 10, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+                                                    onClick={() => {
+                                                        fetch(`${(window as any).__BACKEND_URL || 'http://127.0.0.1:43123'}/open-path`, {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ path: (currentProject as any).projectDir })
+                                                        }).catch(() => { });
+                                                    }}
+                                                >📂 {((currentProject as any).projectDir || '').split('/').pop()}</span>
+                                            </div>
+                                        )}
                                         <button
                                             className="btn-text btn-sm"
                                             style={{ marginTop: 8, width: '100%', textAlign: 'center', fontSize: 11, color: 'var(--accent-primary)' }}
@@ -159,7 +210,8 @@ export const ProjectPanel: React.FC = () => {
                                                 e.dataTransfer.setData('application/json', JSON.stringify({
                                                     type: 'media-item',
                                                     id: item.id,
-                                                    duration: item.duration
+                                                    duration: item.duration,
+                                                    mediaType: item.type
                                                 }));
                                                 e.dataTransfer.effectAllowed = 'copy';
                                             }}
@@ -185,6 +237,45 @@ export const ProjectPanel: React.FC = () => {
                                     ))
                                 )}
                             </div>
+
+                            {/* AI Edit Section */}
+                            {currentProject && media.some((m: any) => m.status === 'ok' && m.type?.toLowerCase() === 'video') && (
+                                <div style={{ marginTop: 16, padding: '12px', background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12))', borderRadius: 10, border: '1px solid rgba(99,102,241,0.25)' }}>
+                                    <button
+                                        className="btn-primary"
+                                        style={{
+                                            width: '100%',
+                                            padding: '10px 16px',
+                                            fontSize: 13,
+                                            fontWeight: 600,
+                                            background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+                                            border: 'none',
+                                            borderRadius: 8,
+                                            color: '#fff',
+                                            cursor: pipelineStage === 'transcribing' ? 'wait' : 'pointer',
+                                            opacity: pipelineStage === 'transcribing' ? 0.7 : 1,
+                                        }}
+                                        onClick={() => agenticEdit()}
+                                        disabled={pipelineStage === 'transcribing'}
+                                    >
+                                        {pipelineStage === 'transcribing' ? '🔄 AI is editing...' : '🤖 AI Edit (Hindi-Optimized)'}
+                                    </button>
+                                    {agenticProgress && agenticProgress.status !== 'idle' && (
+                                        <div style={{ marginTop: 8 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
+                                                <span>{agenticProgress.currentStep}</span>
+                                                <span>{agenticProgress.percent}%</span>
+                                            </div>
+                                            <div style={{ height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
+                                                <div style={{ height: '100%', width: `${agenticProgress.percent}%`, background: 'linear-gradient(90deg, #6366f1, #a855f7)', borderRadius: 2, transition: 'width 0.5s ease' }} />
+                                            </div>
+                                            {agenticProgress.detail && (
+                                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>{agenticProgress.detail}</div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -220,9 +311,28 @@ export const ProjectPanel: React.FC = () => {
                                 {filteredTemplates.length === 0 ? (
                                     <div className="empty-state-small"><p>No templates found</p></div>
                                 ) : filteredTemplates.map(t => (
-                                    <div key={t.id} className="template-card" title={t.description} style={{ cursor: 'pointer', padding: 8, background: 'var(--bg-secondary)', borderRadius: 6, border: '1px solid var(--panel-border)' }}>
-                                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{t.name}</div>
-                                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{getCategoryLabel(t.category)}</div>
+                                    <div
+                                        key={t.id}
+                                        className="template-card"
+                                        title={t.description}
+                                        draggable
+                                        onDragStart={(e) => {
+                                            e.dataTransfer.setData('application/json', JSON.stringify({
+                                                type: 'template-item',
+                                                id: t.id,
+                                                duration: t.durationInFrames / t.fps
+                                            }));
+                                            e.dataTransfer.effectAllowed = 'copy';
+                                        }}
+                                        onClick={() => setSelectedTemplate(t)}
+                                    >
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+                                            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{getCategoryLabel(t.category)}</div>
+                                        </div>
+                                        <div style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', fontFamily: "'SF Mono', monospace" }}>
+                                            {Math.round(t.durationInFrames / t.fps)}s
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -231,9 +341,15 @@ export const ProjectPanel: React.FC = () => {
                 </div>
             </div>
 
-            {showWizard && <ProjectWizard onClose={() => setShowWizard(false)} />
-            }
+            {showWizard && <ProjectWizard onClose={() => setShowWizard(false)} />}
             {showSettings && <ProjectSettingsModal onClose={() => setShowSettings(false)} />}
+            {selectedTemplate && (
+                <TemplatePreviewModal
+                    template={selectedTemplate}
+                    onClose={() => setSelectedTemplate(null)}
+                    onAdd={handleAddTemplate}
+                />
+            )}
         </>
     );
 };

@@ -39,7 +39,7 @@ async function main() {
         process.exit(1);
     }
 
-    const projectDir = path.resolve('desktop', 'data', projectId);
+    const projectDir = readArg('--project-dir') || path.resolve('desktop', 'data', projectId);
     const transcriptPath = path.join(projectDir, 'transcript.json');
     const cutPlanPath = path.join(projectDir, 'cut-plan.json');
     const agentStatePath = path.join(projectDir, 'agent_state.json');

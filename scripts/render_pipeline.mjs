@@ -164,7 +164,7 @@ function collectSourceClips(timeline) {
     .sort((a, b) => a.startUs - b.startUs);
 
   if (sourceClips.length > 0) {
-    return sourceClips;
+    return mergeAdjacentClips(sourceClips);
   }
 
   const durationUs = Number(timeline?.durationUs || 0);
@@ -182,6 +182,43 @@ function collectSourceClips(timeline) {
       endUs: durationUs,
     },
   ];
+}
+
+/**
+ * Merge adjacent source clips from the same sourceRef into larger segments
+ * to dramatically reduce the number of ffmpeg invocations.
+ * Clips within MERGE_GAP_US of each other are combined.
+ */
+function mergeAdjacentClips(sortedClips, mergeGapUs = 2_000_000) {
+  if (sortedClips.length <= 1) return sortedClips;
+
+  const merged = [];
+  let current = { ...sortedClips[0] };
+
+  for (let i = 1; i < sortedClips.length; i++) {
+    const next = sortedClips[i];
+    const sameSource = current.sourceRef === next.sourceRef || !next.sourceRef || !current.sourceRef;
+    const gap = next.sourceStartUs - current.sourceEndUs;
+
+    if (sameSource && gap <= mergeGapUs) {
+      // Extend current segment to include next clip
+      current.sourceEndUs = Math.max(current.sourceEndUs, next.sourceEndUs);
+      current.endUs = Math.max(current.endUs, next.endUs);
+      current.id = `merged-${merged.length + 1}`;
+    } else {
+      merged.push(current);
+      current = { ...next };
+    }
+  }
+  merged.push(current);
+
+  if (merged.length < sortedClips.length) {
+    process.stderr.write(
+      `[render] Merged ${sortedClips.length} source clips into ${merged.length} segments (${mergeGapUs / 1e6}s gap threshold)\n`,
+    );
+  }
+
+  return merged;
 }
 
 function collectOverlayClips(timeline) {
@@ -232,7 +269,22 @@ function isImagePath(filePath, kind = '') {
     ext === '.bmp' ||
     ext === '.gif' ||
     ext === '.ppm' ||
+    ext === '.ppm' ||
     ext === '.pgm'
+  );
+}
+
+function isAudioPath(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return (
+    ext === '.mp3' ||
+    ext === '.wav' ||
+    ext === '.aac' ||
+    ext === '.m4a' ||
+    ext === '.flac' ||
+    ext === '.ogg' ||
+    ext === '.wma' ||
+    ext === '.aiff'
   );
 }
 
@@ -249,6 +301,58 @@ async function resolveDefaultSourcePath(projectDir) {
     return path.resolve(ingest.sourcePath);
   }
 
+  // Fallback 1: scan state.json for media item paths
+  const statePath = path.join(projectDir, 'state.json');
+  const state = await readJsonIfExists(statePath);
+  if (state?.media && Array.isArray(state.media)) {
+    for (const m of state.media) {
+      const mpath = m.path || '';
+      if (mpath && (await exists(mpath))) {
+        return path.resolve(mpath);
+      }
+    }
+  }
+
+  // Fallback 2: scan project uploads folder for video/audio files
+  const uploadsDir = path.join(projectDir, 'uploads');
+  const found = await scanForMediaFile(uploadsDir);
+  if (found) return found;
+
+  // Fallback 3: scan global uploads folder
+  const globalUploads = path.join(projectDir, '..', '..', 'desktop', 'data', 'uploads');
+  const globalFound = await scanForMediaFile(globalUploads);
+  if (globalFound) return globalFound;
+
+  // Fallback 4: check rootDir/desktop/data/uploads
+  const rootUploads = path.resolve('desktop', 'data', 'uploads');
+  const rootFound = await scanForMediaFile(rootUploads);
+  if (rootFound) return rootFound;
+
+  return '';
+}
+
+async function scanForMediaFile(dir) {
+  try {
+    const files = await fs.readdir(dir);
+    const videoExts = ['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'];
+    const audioExts = ['.m4a', '.mp3', '.wav', '.aac', '.flac', '.ogg'];
+    // Prefer video files first
+    for (const f of files) {
+      const ext = path.extname(f).toLowerCase();
+      if (videoExts.includes(ext)) {
+        const full = path.join(dir, f);
+        if (await exists(full)) return path.resolve(full);
+      }
+    }
+    // Then audio
+    for (const f of files) {
+      const ext = path.extname(f).toLowerCase();
+      if (audioExts.includes(ext)) {
+        const full = path.join(dir, f);
+        if (await exists(full)) return path.resolve(full);
+      }
+    }
+  } catch { /* dir doesn't exist */ }
   return '';
 }
 
@@ -290,36 +394,55 @@ function escapeSubtitlePath(filePath) {
 }
 
 async function renderSegment({ sourcePath, startUs, endUs, outputPath, profile }) {
-  await run('ffmpeg', [
-    '-y',
-    '-loglevel',
-    'error',
-    '-ss',
-    usToSec(startUs),
-    '-to',
-    usToSec(endUs),
-    '-i',
-    sourcePath,
-    '-map',
-    '0:v:0',
-    '-map',
-    '0:a?',
-    '-c:v',
-    'libx264',
-    '-preset',
-    profile.preset,
-    '-crf',
-    String(profile.crf),
-    '-pix_fmt',
-    'yuv420p',
-    '-c:a',
-    'aac',
-    '-b:a',
-    '160k',
-    '-movflags',
-    '+faststart',
-    outputPath,
-  ]);
+  const isAudio = isAudioPath(sourcePath);
+
+  if (isAudio) {
+    // Generate video from black background + audio slice
+    await run('ffmpeg', [
+      '-y',
+      '-loglevel', 'error',
+      '-f', 'lavfi', '-i', 'color=c=black:s=1920x1080:r=30',
+      '-ss', usToSec(startUs), '-to', usToSec(endUs), '-i', sourcePath,
+      '-map', '0:v', '-map', '1:a',
+      '-shortest',
+      '-c:v', 'libx264', '-preset', profile.preset, '-crf', String(profile.crf), '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '160k',
+      '-movflags', '+faststart',
+      outputPath,
+    ]);
+  } else {
+    // Standard video render
+    await run('ffmpeg', [
+      '-y',
+      '-loglevel',
+      'error',
+      '-ss',
+      usToSec(startUs),
+      '-to',
+      usToSec(endUs),
+      '-i',
+      sourcePath,
+      '-map',
+      '0:v:0',
+      '-map',
+      '0:a?',
+      '-c:v',
+      'libx264',
+      '-preset',
+      profile.preset,
+      '-crf',
+      String(profile.crf),
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '160k',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ]);
+  }
 }
 
 async function concatSegments(listPath, outputPath, profile) {
@@ -576,7 +699,7 @@ async function main() {
     throw new Error('ffmpeg is required for rendering but was not found in PATH.');
   }
 
-  const projectDir = path.resolve('desktop', 'data', projectId);
+  const projectDir = readArg('--project-dir') || path.resolve('desktop', 'data', projectId);
   const timelinePath = path.join(projectDir, 'timeline.json');
   const jobPath = path.join(projectDir, 'render-job.json');
   const renderDir = path.join(projectDir, 'renders');

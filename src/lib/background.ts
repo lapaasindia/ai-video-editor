@@ -17,7 +17,14 @@ export const useResolvedBackgroundControls = (
     props?: BackgroundControlProps,
 ): GlobalBackgroundControls => {
     const contextControls = useBackgroundControls();
-    const inputProps = (getInputProps() ?? {}) as BackgroundControlProps;
+
+    let inputProps: BackgroundControlProps = {};
+    try {
+        inputProps = (getInputProps() ?? {}) as BackgroundControlProps;
+    } catch {
+        // getInputProps() throws when used inside <Player />
+        // We can safely ignore this and fall back to context/defaults
+    }
 
     return {
         showBackground:
@@ -46,7 +53,12 @@ export const useBackgroundControls = (): GlobalBackgroundControls => {
 export const resolveBackgroundControls = (
     props?: BackgroundControlProps,
 ): GlobalBackgroundControls => {
-    const inputProps = (getInputProps() ?? {}) as BackgroundControlProps;
+    let inputProps: BackgroundControlProps = {};
+    try {
+        inputProps = (getInputProps() ?? {}) as BackgroundControlProps;
+    } catch {
+        // Ignore inside Player
+    }
 
     return {
         showBackground:

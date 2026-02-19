@@ -7,7 +7,7 @@ const TRACK_HEIGHT = 52;
 const TRACK_HEADER_WIDTH = 110;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 20;
-const SNAP_THRESHOLD_PX = 6;
+
 const BASE_PX_PER_SEC = 80;
 
 const TRACK_COLORS: Record<string, string> = {
@@ -42,7 +42,10 @@ export const TimelinePanel: React.FC = () => {
         canRedo,
         selectedClipId,
         setSelectedClipId,
-        currentProject,
+        addClip,
+        addTemplateClip,
+        addTrack,
+        deleteTrack,
     } = useEditor();
 
     // ── Local state ──────────────────────────────────────────────────────────
@@ -50,6 +53,8 @@ export const TimelinePanel: React.FC = () => {
     const [zoom, setZoom] = useState(1);
     const [scrollLeft, setScrollLeft] = useState(0);
     const timelineRef = useRef<HTMLDivElement>(null);
+    const headerRef = useRef<HTMLDivElement>(null);
+    const isScrollingRef = useRef(false);
 
     // Drag state
     const [dragState, setDragState] = useState<{
@@ -71,6 +76,12 @@ export const TimelinePanel: React.FC = () => {
         );
         return maxEnd + 5; // add padding
     }, [tracks]);
+
+    // Track display order: overlay/text → video → audio
+    const TRACK_ORDER: Record<string, number> = { overlay: 0, text: 1, video: 2, audio: 3 };
+    const sortedTracks = useMemo(() =>
+        [...tracks].sort((a, b) => (TRACK_ORDER[a.type] ?? 2) - (TRACK_ORDER[b.type] ?? 2)),
+        [tracks]);
 
     const totalWidth = totalDuration * pxPerSec;
 
@@ -240,6 +251,19 @@ export const TimelinePanel: React.FC = () => {
 
     const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
         setScrollLeft(e.currentTarget.scrollLeft);
+        if (headerRef.current && !isScrollingRef.current) {
+            isScrollingRef.current = true;
+            headerRef.current.scrollTop = e.currentTarget.scrollTop;
+            isScrollingRef.current = false;
+        }
+    }, []);
+
+    const handleHeaderScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+        if (timelineRef.current && !isScrollingRef.current) {
+            isScrollingRef.current = true;
+            timelineRef.current.scrollTop = e.currentTarget.scrollTop;
+            isScrollingRef.current = false;
+        }
     }, []);
 
     // ── Render ────────────────────────────────────────────────────────────────
@@ -295,16 +319,23 @@ export const TimelinePanel: React.FC = () => {
             {/* Timeline body */}
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                 {/* Track headers */}
-                <div style={{
-                    width: TRACK_HEADER_WIDTH,
-                    flexShrink: 0,
-                    borderRight: '1px solid #333',
-                    background: 'var(--panel-bg, #0f0f1e)',
-                }}>
+                <div
+                    ref={headerRef}
+                    onScroll={handleHeaderScroll}
+                    style={{
+                        width: TRACK_HEADER_WIDTH,
+                        flexShrink: 0,
+                        borderRight: '1px solid #333',
+                        background: 'var(--panel-bg, #0f0f1e)',
+                        overflowY: 'auto',
+                        overflowX: 'hidden',
+                        scrollbarWidth: 'none', // Hide scrollbar for cleaner look
+                    }}
+                >
                     {/* Ruler header */}
                     <div style={{ height: 26, borderBottom: '1px solid #333' }} />
 
-                    {tracks.map(track => (
+                    {sortedTracks.map(track => (
                         <div key={track.id} style={{
                             height: TRACK_HEIGHT,
                             display: 'flex',
@@ -322,11 +353,30 @@ export const TimelinePanel: React.FC = () => {
                                 background: TRACK_COLORS[track.type] || '#666',
                                 flexShrink: 0,
                             }} />
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {track.name}
-                            </span>
+                            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {track.name}
+                                </span>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); if (confirm('Delete track?')) deleteTrack(track.id); }}
+                                    style={{
+                                        background: 'transparent', border: 'none', color: '#666',
+                                        cursor: 'pointer', fontSize: 10, padding: 2, display: 'none'
+                                    }}
+                                    className="track-delete-btn"
+                                >
+                                    ✕
+                                </button>
+                            </div>
                         </div>
                     ))}
+
+                    {/* Add Track Buttons */}
+                    <div style={{ padding: 8, display: 'flex', gap: 4, justifyContent: 'center', borderTop: '1px solid #333' }}>
+                        <button title="Add Video Track" onClick={() => addTrack('video')} style={addTrackBtnStyle}>🎥</button>
+                        <button title="Add Audio Track" onClick={() => addTrack('audio')} style={addTrackBtnStyle}>🎵</button>
+                        <button title="Add Overlay Track" onClick={() => addTrack('overlay')} style={addTrackBtnStyle}>✨</button>
+                    </div>
                 </div>
 
                 {/* Scrollable timeline area */}
@@ -335,7 +385,7 @@ export const TimelinePanel: React.FC = () => {
                     style={{
                         flex: 1,
                         overflowX: 'auto',
-                        overflowY: 'hidden',
+                        overflowY: 'auto',
                         position: 'relative',
                     }}
                     onClick={handleTimelineClick}
@@ -375,14 +425,93 @@ export const TimelinePanel: React.FC = () => {
                             ))}
                         </div>
 
-                        {/* Tracks */}
-                        {tracks.map(track => (
-                            <div key={track.id} style={{
-                                height: TRACK_HEIGHT,
-                                position: 'relative',
-                                borderBottom: '1px solid #222',
-                                background: 'var(--panel-content-bg, #12121e)',
-                            }}>
+                        {sortedTracks.map(track => (
+                            <div
+                                key={track.id}
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'copy';
+                                }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    const dataStr = e.dataTransfer.getData('application/json');
+                                    if (dataStr) {
+                                        try {
+                                            const data = JSON.parse(dataStr);
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const x = e.clientX - rect.left;
+                                            const time = Math.max(0, x / pxPerSec);
+
+                                            // Determine what type of track this asset needs
+                                            let requiredType: 'video' | 'audio' | 'overlay' = 'video';
+                                            if (data.type === 'media-item' && data.mediaType === 'audio') {
+                                                requiredType = 'audio';
+                                            }
+
+                                            // Check type compatibility
+                                            const isCompatible =
+                                                track.type === requiredType ||
+                                                (track.type === 'overlay' && requiredType === 'video') ||
+                                                (track.type === 'video' && requiredType === 'video');
+
+                                            const addFn = (targetId: string) => {
+                                                if (data.type === 'template-item') addTemplateClip(data.id, targetId, time);
+                                                else addClip(data.id, targetId, time);
+                                            };
+
+                                            // Incompatible type → create correct track
+                                            if (!isCompatible) {
+                                                const newId = `track-${requiredType}-${Date.now()}`;
+                                                addTrack(requiredType, newId);
+                                                addFn(newId);
+                                                return;
+                                            }
+
+                                            // Check overlap on this track
+                                            const duration = data.duration || 5;
+                                            const hasOverlap = track.clips.some(c => {
+                                                const cEnd = c.start + c.duration;
+                                                const newEnd = time + duration;
+                                                return time < cEnd && newEnd > c.start;
+                                            });
+
+                                            if (hasOverlap) {
+                                                // Try to find another compatible track with no overlap
+                                                let placed = false;
+                                                for (const t of tracks) {
+                                                    if (t.id === track.id) continue;
+                                                    if (t.type !== track.type && !(t.type === 'overlay' && requiredType === 'video')) continue;
+                                                    const tOverlap = t.clips.some(c => {
+                                                        const cEnd = c.start + c.duration;
+                                                        const newEnd = time + duration;
+                                                        return time < cEnd && newEnd > c.start;
+                                                    });
+                                                    if (!tOverlap) {
+                                                        addFn(t.id);
+                                                        placed = true;
+                                                        break;
+                                                    }
+                                                }
+                                                if (!placed) {
+                                                    const newId = `track-${track.type}-${Date.now()}`;
+                                                    addTrack(track.type as any, newId);
+                                                    addFn(newId);
+                                                }
+                                            } else {
+                                                addFn(track.id);
+                                            }
+                                        } catch (err) {
+                                            console.error('Drop error', err);
+                                        }
+                                    }
+                                }}
+                                style={{
+                                    height: TRACK_HEIGHT,
+                                    position: 'relative',
+                                    borderBottom: '1px solid #222',
+                                    background: 'var(--panel-content-bg, #12121e)',
+                                }}
+                            >
                                 {track.clips.map(clip => {
                                     const left = clip.start * pxPerSec;
                                     const width = clip.duration * pxPerSec;
@@ -465,6 +594,32 @@ export const TimelinePanel: React.FC = () => {
                             </div>
                         ))}
 
+
+
+                        <NewTrackDropZone
+                            height={60}
+                            pixelsPerSecond={pxPerSec}
+                            onDrop={(item, time) => {
+                                // Determine type
+                                let type: 'video' | 'audio' | 'overlay' = 'video';
+                                if (item.mediaType === 'audio') type = 'audio';
+                                if (item.type === 'image') type = 'video';
+
+                                const newTrackId = `track-${type}-${Date.now()}`;
+                                addTrack(type, newTrackId);
+
+                                if (item.id && item.trackId) {
+                                    // Existing clip move
+                                    moveClip(item.id, newTrackId, time);
+                                } else if (item.templateId || item.type === 'template-item') {
+                                    const tid = item.templateId || item.id;
+                                    addTemplateClip(tid, newTrackId, time);
+                                } else {
+                                    addClip(item.id, newTrackId, time);
+                                }
+                            }}
+                        />
+
                         {/* Playhead */}
                         <div style={{
                             position: 'absolute',
@@ -494,6 +649,61 @@ export const TimelinePanel: React.FC = () => {
     );
 };
 
+// ─── New Track Drop Zone ─────────────────────────────────────────────────────
+
+const NewTrackDropZone: React.FC<{
+    onDrop: (item: any, time: number) => void;
+    height: number;
+    pixelsPerSecond: number;
+}> = ({ onDrop, height, pixelsPerSecond }) => {
+    const [isOver, setIsOver] = useState(false);
+
+    return (
+        <div
+            onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                setIsOver(true);
+            }}
+            onDragLeave={() => setIsOver(false)}
+            onDrop={(e) => {
+                e.preventDefault();
+                setIsOver(false);
+                const dataStr = e.dataTransfer.getData('application/json');
+                if (dataStr) {
+                    try {
+                        const data = JSON.parse(dataStr);
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const time = Math.max(0, x / pixelsPerSecond);
+                        onDrop(data, time);
+                    } catch (err) {
+                        console.error('Drop error', err);
+                    }
+                }
+            }}
+            style={{
+                height,
+                background: isOver ? 'rgba(50, 150, 255, 0.1)' : 'transparent',
+                border: isOver ? '1px dashed #4a9eff' : '1px dashed rgba(255,255,255,0.05)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                color: isOver ? '#4a9eff' : '#444',
+                fontSize: 12,
+                marginTop: 8,
+                borderRadius: 4,
+                transition: 'all 0.2s',
+                pointerEvents: 'all'
+            }}
+        >
+            <span style={{ position: 'sticky', left: 16 }}>
+                {isOver ? 'Drop to Create New Track' : 'Drag clip here to create a new layer'}
+            </span>
+        </div>
+    );
+};
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const toolbarBtnStyle: React.CSSProperties = {
@@ -506,4 +716,18 @@ const toolbarBtnStyle: React.CSSProperties = {
     fontSize: '0.75rem',
     lineHeight: 1.2,
     transition: 'background 0.15s',
+};
+
+const addTrackBtnStyle: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid #444',
+    borderRadius: 4,
+    color: '#ccc',
+    cursor: 'pointer',
+    padding: '4px',
+    fontSize: '12px',
+    flex: 1,
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
 };

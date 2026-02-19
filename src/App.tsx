@@ -70,7 +70,7 @@ import './templates/social-hooks/TimelineSteps01';
 import './templates/social-hooks/AutoWhoosh01';
 
 const EditorLayout = () => {
-    const { currentProject, backendAvailable, saveProject, renderVideo, closeProject } = useEditor();
+    const { currentProject, backendAvailable, saveProject, renderVideo, exportFCPXML, closeProject } = useEditor();
     const [showSettings, setShowSettings] = useState(false);
 
     const handleDrop = async (e: React.DragEvent) => {
@@ -160,7 +160,15 @@ const EditorLayout = () => {
                         }} />
                         {backendAvailable ? 'Backend' : 'No Backend'}
                     </div>
-                    <button className="action-button primary" onClick={() => renderVideo && renderVideo()}>Export</button>
+                    <button
+                        className="action-button secondary"
+                        onClick={() => exportFCPXML && exportFCPXML()}
+                        title="Export timeline to FCPXML"
+                        style={{ marginRight: 10 }}
+                    >
+                        Export XML
+                    </button>
+                    <button className="action-button primary" onClick={() => renderVideo && renderVideo()}>Export Video</button>
                 </div>
             </header>
 

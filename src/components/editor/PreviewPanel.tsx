@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Player, PlayerRef } from '@remotion/player';
 import { useEditor } from '../../context/EditorContext';
 import { AbsoluteFill, Sequence, Video, Audio, Img } from 'remotion';
+import { getTemplateById } from '../../templates/registry';
 
-const BACKEND = 'http://localhost:43123';
+const BACKEND = 'http://127.0.0.1:43123';
 
 /** Convert a local filesystem path to a backend-served URL */
 const toMediaUrl = (filePath: string): string => {
@@ -21,34 +22,37 @@ const TimelineComposition: React.FC<{ tracks: any[]; fps: number }> = ({ tracks,
             {tracks.map(track => (
                 <AbsoluteFill key={track.id}>
                     {track.clips.map((clip: any) => {
-                        // Simple mapping for now
-                        const Component =
-                            clip.type === 'video' ? Video :
-                                clip.type === 'audio' ? Audio :
-                                    clip.type === 'image' ? Img :
-                                        null;
-
-                        if (!Component) return null;
-
                         const frames = Math.max(1, Math.round(clip.duration * fps));
                         if (clip.duration <= 0) return null;
 
-                        // For video clips, use startFrom to play the correct segment of the source
-                        const startFrom = clip.type === 'video' && clip.offset
-                            ? Math.round(clip.offset * fps)
-                            : undefined;
+                        // Resolve component type
+                        let Component: any = null;
+                        let props: any = { src: clip.src };
+
+                        if (clip.type === 'video') {
+                            Component = Video;
+                            props = {
+                                src: clip.src,
+                                startFrom: clip.offset ? Math.round(clip.offset * fps) : undefined,
+                                onError: (e: any) => console.warn('Video load error', e)
+                            };
+                        } else if (clip.type === 'audio') {
+                            Component = Audio;
+                        } else if (clip.type === 'image') {
+                            Component = Img;
+                        } else if (clip.type === 'template' && clip.templateId) {
+                            const template = getTemplateById(clip.templateId);
+                            if (template) {
+                                Component = template.component;
+                                props = clip.content || {};
+                            }
+                        }
+
+                        if (!Component) return null;
 
                         return (
                             <Sequence key={clip.id} from={Math.round(clip.start * fps)} durationInFrames={frames}>
-                                {clip.type === 'video' ? (
-                                    <Video
-                                        src={clip.src}
-                                        startFrom={startFrom}
-                                        onError={(e) => console.warn('Video load error:', e)}
-                                    />
-                                ) : (
-                                    <Component src={clip.src} />
-                                )}
+                                <Component {...props} />
                             </Sequence>
                         );
                     })}
