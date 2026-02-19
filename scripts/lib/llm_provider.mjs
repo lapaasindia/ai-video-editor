@@ -150,15 +150,16 @@ export function isProviderAvailable(provider) {
     const catalog = PROVIDER_CATALOG[provider];
     if (!catalog) return false;
     if (catalog.type === 'local') return true; // Assumed available if Ollama running
-    if (catalog.type === 'local-cli') return Boolean(process.env[catalog.envKey]); // Codex needs OPENAI_API_KEY
+    if (catalog.type === 'local-cli') return true; // Codex uses ChatGPT login (no API key needed)
     return Boolean(process.env[catalog.envKey]);
 }
 
 // ── LLM Execution ───────────────────────────────────────────────────────────
 
 async function runCodex(model, prompt, timeoutMs) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error('OPENAI_API_KEY not set — required for Codex CLI');
+    // Codex CLI supports ChatGPT login (no API key needed) or OPENAI_API_KEY
+    // Uses: codex exec --sandbox workspace-write "<prompt>"
+    // Model is read from ~/.codex/config.toml unless overridden
 
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -166,22 +167,29 @@ async function runCodex(model, prompt, timeoutMs) {
             reject(new Error(`Codex CLI timed out after ${timeoutMs}ms`));
         }, timeoutMs);
 
-        // Use codex if installed globally, otherwise fall back to npx
-        const codexBin = _codexAvailable ? 'codex' : 'npx';
-        const codexArgs = _codexAvailable
-            ? ['--model', model, '--quiet', prompt]
-            : ['--yes', '@openai/codex', '--model', model, '--quiet', prompt];
+        const args = ['exec', '--sandbox', 'workspace-write'];
 
-        const child = execFile(codexBin, codexArgs, {
-            env: { ...process.env, OPENAI_API_KEY: apiKey },
+        // Only override model if explicitly requested and not the default
+        if (model && model !== 'gpt-5.3-codex') {
+            args.push('-c', `model="${model}"`);
+        }
+
+        args.push(prompt);
+
+        const child = execFile('codex', args, {
+            env: { ...process.env },
             maxBuffer: 10 * 1024 * 1024, // 10MB
+            cwd: process.cwd(),
         }, (err, stdout, stderr) => {
             clearTimeout(timer);
             if (err) {
                 reject(new Error(`Codex CLI error: ${err.message}\n${stderr}`));
                 return;
             }
-            resolve(stdout.trim());
+            // codex exec outputs the final response as the last non-empty line
+            const lines = stdout.trim().split('\n').filter(l => l.trim());
+            const response = lines[lines.length - 1] || stdout.trim();
+            resolve(response);
         });
     });
 }
@@ -428,14 +436,14 @@ export async function detectBestLLM() {
         return { provider, model };
     }
 
-    // 1. Codex CLI — needs OPENAI_API_KEY + codex binary (or npx fallback)
+    // 1. Codex CLI — uses ChatGPT login, no API key needed
+    if (await isCodexAvailable()) {
+        console.error('[LLM] Using Codex CLI (gpt-5.3-codex via ChatGPT login)');
+        return { provider: 'codex', model: 'gpt-5.3-codex' };
+    }
+
+    // 2. OpenAI API directly (if key set)
     if (process.env.OPENAI_API_KEY) {
-        const codexReady = await isCodexAvailable();
-        if (codexReady) {
-            console.error('[LLM] Using Codex CLI (o4-mini)');
-            return { provider: 'codex', model: 'o4-mini' };
-        }
-        // 2. OpenAI API directly
         console.error('[LLM] Using OpenAI API (gpt-4o-mini)');
         return { provider: 'openai', model: 'gpt-4o-mini' };
     }
