@@ -872,18 +872,30 @@ function clampRanges(ranges, durationUs) {
 
 async function generateCutPlanWithOllama(transcriptPayload, llmConfig) {
   const segments = (transcriptPayload.segments || []);
+  const MAX_SEGMENTS = 25;
   // Limit to 25 segments max to keep prompt size manageable for any LLM
-  const trimmed = segments.slice(0, 25);
+  const trimmed = segments.slice(0, MAX_SEGMENTS);
+  if (segments.length > MAX_SEGMENTS) {
+    console.error(`[LLM] Warning: transcript has ${segments.length} segments — analyzing first ${MAX_SEGMENTS} only`);
+  }
+
   const simplifiedTranscript = trimmed.map(s => ({
     startUs: s.startUs,
     endUs: s.endUs,
-    text: (s.text || '').slice(0, 150), // cap each segment text
+    text: (s.text || '').slice(0, 150),
   }));
+
+  // Compute the exact time range the LLM is seeing so it can't hallucinate cuts outside it
+  const rangeStartUs = trimmed.length > 0 ? trimmed[0].startUs : 0;
+  const rangeEndUs = trimmed.length > 0 ? trimmed[trimmed.length - 1].endUs : 0;
 
   const prompt = `You are an expert video editor AI. Analyze this Hindi/Hinglish transcript.
 
 Transcript segments (${simplifiedTranscript.length} of ${segments.length} total):
 ${JSON.stringify(simplifiedTranscript, null, 1)}
+
+IMPORTANT: You are only analyzing the time range ${rangeStartUs}–${rangeEndUs} microseconds.
+All startUs/endUs values in your response MUST be within this range. Do NOT suggest cuts outside it.
 
 Tasks:
 1. Identify sections to CUT - repetitions, tangents, filler phrases
@@ -893,13 +905,13 @@ Tasks:
 Output ONLY raw JSON, no prose, no markdown:
 {
   "removeRanges": [
-    { "startUs": 0, "endUs": 0, "reason": "repetition|tangent|filler", "confidence": 0.9 }
+    { "startUs": ${rangeStartUs}, "endUs": ${rangeStartUs}, "reason": "repetition|tangent|filler", "confidence": 0.9 }
   ],
   "sections": [
-    { "startUs": 0, "endUs": 0, "type": "intro|key-point|example|transition|conclusion", "summary": "brief" }
+    { "startUs": ${rangeStartUs}, "endUs": ${rangeEndUs}, "type": "intro|key-point|example|transition|conclusion", "summary": "brief" }
   ],
   "overlayTexts": [
-    { "startUs": 0, "endUs": 0, "text": "Key insight to show on screen" }
+    { "startUs": ${rangeStartUs}, "endUs": ${rangeStartUs}, "text": "Key insight to show on screen" }
   ]
 }`;
 
@@ -915,6 +927,17 @@ Output ONLY raw JSON, no prose, no markdown:
       if (!Array.isArray(result.removeRanges)) result.removeRanges = [];
       if (!Array.isArray(result.sections)) result.sections = [];
       if (!Array.isArray(result.overlayTexts)) result.overlayTexts = [];
+
+      // Clamp: discard any entries outside the analyzed time range (LLM hallucination guard)
+      if (rangeEndUs > 0) {
+        const inRange = r => Number(r.startUs) >= rangeStartUs && Number(r.endUs) <= rangeEndUs + 1_000_000;
+        const before = result.removeRanges.length;
+        result.removeRanges = result.removeRanges.filter(inRange);
+        result.sections = result.sections.filter(inRange);
+        result.overlayTexts = result.overlayTexts.filter(inRange);
+        const dropped = before - result.removeRanges.length;
+        if (dropped > 0) console.error(`[LLM] Dropped ${dropped} out-of-range cut suggestions`);
+      }
 
       console.error(`[LLM] AI analysis: ${result.removeRanges.length} cuts, ${result.sections.length} sections, ${result.overlayTexts.length} overlays`);
       return result;
