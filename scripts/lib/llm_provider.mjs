@@ -186,10 +186,9 @@ async function runCodex(model, prompt, timeoutMs) {
                 reject(new Error(`Codex CLI error: ${err.message}\n${stderr}`));
                 return;
             }
-            // codex exec outputs the final response as the last non-empty line
-            const lines = stdout.trim().split('\n').filter(l => l.trim());
-            const response = lines[lines.length - 1] || stdout.trim();
-            resolve(response);
+            // Return full stdout — extractJsonFromLLMOutput will find JSON anywhere in it.
+            // Codex wraps responses in session logs so we can't just take the last line.
+            resolve(stdout.trim());
         });
     });
 }
@@ -409,16 +408,58 @@ export async function runLLMPrompt(config, prompt, timeoutMs = 180000) {
 
 /**
  * Extract JSON from LLM output, handling markdown code blocks and extra text.
+ * Finds the largest valid JSON object/array — important for Codex CLI which
+ * wraps the actual response in a session log with many small JSON fragments.
  */
 export function extractJsonFromLLMOutput(text) {
     const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-    // Try object match
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    // Try array match
-    const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
-    if (arrayMatch) return JSON.parse(arrayMatch[0]);
-    throw new Error('No valid JSON found in LLM output');
+
+    // Find all candidate JSON blocks (objects and arrays), pick the largest valid one
+    const candidates = [];
+
+    for (const startChar of ['{', '[']) {
+        const endChar = startChar === '{' ? '}' : ']';
+        let idx = 0;
+        while (idx < cleaned.length) {
+            const start = cleaned.indexOf(startChar, idx);
+            if (start === -1) break;
+
+            // Walk forward to find matching close bracket
+            let depth = 0;
+            let inString = false;
+            let escape = false;
+            let end = -1;
+            for (let i = start; i < cleaned.length; i++) {
+                const ch = cleaned[i];
+                if (escape) { escape = false; continue; }
+                if (ch === '\\' && inString) { escape = true; continue; }
+                if (ch === '"') { inString = !inString; continue; }
+                if (inString) continue;
+                if (ch === startChar) depth++;
+                else if (ch === endChar) {
+                    depth--;
+                    if (depth === 0) { end = i; break; }
+                }
+            }
+
+            if (end !== -1) {
+                const candidate = cleaned.slice(start, end + 1);
+                try {
+                    const parsed = JSON.parse(candidate);
+                    candidates.push({ parsed, length: candidate.length });
+                } catch { /* not valid JSON */ }
+            }
+            idx = start + 1;
+        }
+    }
+
+    if (candidates.length === 0) {
+        throw new Error('No valid JSON found in LLM output');
+    }
+
+    // Return the largest valid JSON (most likely to be the actual response)
+    candidates.sort((a, b) => b.length - a.length);
+    return candidates[0].parsed;
 }
 
 /**

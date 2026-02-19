@@ -298,6 +298,7 @@ async function runNodeScript(scriptPath, args = [], timeoutMs = 120000) {
     cwd: rootDir,
     timeout: timeoutMs,
     maxBuffer: 1024 * 1024 * 8,
+    env: { ...process.env }, // Explicitly pass env so API keys set at runtime propagate
   });
   return (stdout ?? '').toString().trim();
 }
