@@ -42,42 +42,76 @@ async function writeJson(filePath, data) {
 //   - We have ≥3 sentences, OR
 //   - There's a long pause (>1.5s gap between segments)
 
-const TARGET_CHUNK_MIN_US = 5_000_000;   // 5 seconds minimum
-const TARGET_CHUNK_MAX_US = 10_000_000;  // 10 seconds maximum
-const LONG_PAUSE_US       = 1_500_000;   // 1.5s gap = topic break
-const MAX_SENTENCES       = 3;
+const TARGET_CHUNK_DURATION_US = 7_000_000;  // ~7 seconds per chunk
+const MAX_WORDS_PER_CHUNK       = 25;          // ~2-3 Hindi sentences
 
+/**
+ * Splits transcript segments into 2-3 sentence topic chunks (~5-7s each).
+ * Handles large Sarvam segments (25s each) by splitting on sentence boundaries
+ * and interpolating timestamps proportionally by word count.
+ */
 function splitIntoTopicChunks(segments) {
     if (!segments || segments.length === 0) return [];
 
+    // First, explode each segment into sentence-level micro-segments
+    // by splitting on sentence-ending punctuation and interpolating timestamps.
+    const sentences = [];
+    for (const seg of segments) {
+        const text = (seg.text || '').trim();
+        if (!text) continue;
+
+        // Split on sentence boundaries (Hindi uses ।, English uses . ! ?)
+        const parts = text.split(/(?<=[।.!?]\s)|(?<=\s{2,})/u)
+            .map(p => p.trim()).filter(Boolean);
+
+        if (parts.length <= 1) {
+            sentences.push({ text, startUs: seg.startUs, endUs: seg.endUs });
+            continue;
+        }
+
+        // Interpolate timestamps proportionally by character count
+        const totalChars = text.length;
+        let cursor = seg.startUs;
+        for (const part of parts) {
+            const fraction = part.length / totalChars;
+            const durationUs = Math.round((seg.endUs - seg.startUs) * fraction);
+            sentences.push({
+                text: part,
+                startUs: cursor,
+                endUs: cursor + durationUs,
+            });
+            cursor += durationUs;
+        }
+    }
+
+    // Now group sentences into chunks of MAX_WORDS_PER_CHUNK words or TARGET_CHUNK_DURATION_US
     const chunks = [];
     let current = [];
+    let currentWords = 0;
 
-    for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
-        const next = segments[i + 1];
-        current.push(seg);
+    for (let i = 0; i < sentences.length; i++) {
+        const s = sentences[i];
+        const wordCount = (s.text.match(/\S+/g) || []).length;
+        current.push(s);
+        currentWords += wordCount;
 
         const chunkDuration = current[current.length - 1].endUs - current[0].startUs;
-        const gapToNext = next ? next.startUs - seg.endUs : Infinity;
-        const sentenceCount = current.length;
+        const isLast = i === sentences.length - 1;
 
         const shouldBreak =
-            (sentenceCount >= 2 && chunkDuration >= TARGET_CHUNK_MIN_US) ||
-            sentenceCount >= MAX_SENTENCES ||
-            gapToNext > LONG_PAUSE_US ||
-            chunkDuration >= TARGET_CHUNK_MAX_US ||
-            !next;
+            currentWords >= MAX_WORDS_PER_CHUNK ||
+            chunkDuration >= TARGET_CHUNK_DURATION_US ||
+            isLast;
 
-        if (shouldBreak) {
+        if (shouldBreak && current.length > 0) {
             chunks.push({
                 index: chunks.length,
                 startUs: current[0].startUs,
                 endUs: current[current.length - 1].endUs,
-                segments: current,
                 text: current.map(s => s.text).join(' '),
             });
             current = [];
+            currentWords = 0;
         }
     }
 
@@ -308,12 +342,13 @@ async function main() {
     const chunks = splitIntoTopicChunks(segments);
     console.error(`[HR] Split into ${chunks.length} topic chunks (avg ${Math.round(durationUs / 1_000_000 / chunks.length)}s each)`);
 
-    // 4. Analyse each chunk with AI in parallel (concurrency=4 — API rate limit safe)
-    console.error(`[HR] Analysing chunks with AI (parallel, concurrency=4)...`);
+    // 4. Analyse each chunk with AI in parallel (concurrency=2 — Codex rate limit safe)
+    console.error(`[HR] Analysing ${chunks.length} chunks with AI (parallel, concurrency=2)...`);
+    // Concurrency=2 to stay within Codex rate limits (each call is a full session)
     const rawDecisions = await parallelMap(chunks, async (chunk) => {
         console.error(`[HR] Chunk ${chunk.index + 1}/${chunks.length}: "${chunk.text.slice(0, 60)}..."`);
         return analyseChunkWithAI(chunk, segments, catalog, llmConfig, chunks.length);
-    }, 4);
+    }, 2);
 
     // 5. Enforce density — something every 5-7 seconds
     const decisions = enforceDensity(rawDecisions, catalog);
