@@ -628,23 +628,46 @@ Generate final visual storytelling plan using existing template library + extern
 - `Risk`: timeline complexity hurts performance.
   - `Mitigation`: proxies, virtualization, memoized rendering.
 
-## 21. Open Questions (Need Product Decision)
-- Should local transcription be default or API default?
-- Maximum supported source duration for v1?
-- Are subtitles always burned in, or optional separate track export?
-- Which providers and licenses are acceptable for commercial use by default?
-- Should generated template usage prioritize category based on platform target?
-- Is Intel Mac support required at launch or Apple Silicon only?
-- Which local runtimes are officially supported in v1 (`Ollama`, `MLX`, `whisper.cpp`, other)?
-- Should model binaries be bundled in app installer or downloaded post-install?
+## 21. Open Questions — Resolved (February 18, 2026)
+- **Local transcription default or API?** → `Hybrid` mode is default. Local attempted first, API fallback if model unavailable.
+- **Maximum supported source duration for v1?** → No hard limit enforced yet. Target: 60 min source (PRD §14).
+- **Subtitles burned in or separate track?** → Both: optional burn-in flag on render + separate caption track in timeline.
+- **Acceptable providers for commercial use?** → Pexels, Pixabay, Unsplash (all implemented in `edit_now_pipeline.mjs`).
+- **Template usage priority by platform?** → Not yet implemented. Templates are selected by heuristic matching to transcript segments.
+- **Intel Mac support at launch?** → Supported with limits (secondary tier). Primary path: Apple Silicon + Metal (§1.1 decision).
+- **Supported local runtimes for v1?** → `Ollama`, `whisper.cpp`, `faster-whisper`, `MLX` (all discovered in `model_runtime_discovery.mjs`).
+- **Model binaries bundled or post-install?** → Downloaded post-install. Model Manager UI provides download buttons. First-run checks guide user.
 
-## 22. Immediate Engineering Next Steps
-1. Finalize canonical timeline schema (`us` + frame mapping).
-2. Finalize desktop architecture for `Lapaas AI Editor` and `.dmg` pipeline.
-3. Implement local model discovery/selection/install service with fallback policy.
-4. Implement workflow orchestrator and job states.
-5. Build `Start Editing` backend pipeline with transcript + cut outputs.
-6. Build rough-cut timeline UI with drag/trim/split.
-7. Build `Edit Now` planner with template registry constraints.
-8. Integrate free asset provider adapters and motion defaults.
-9. Add render queue, output delivery, and Metal/video-hardware acceleration checks.
+## 22. Immediate Engineering Next Steps (Updated February 18, 2026)
+1. ~~Finalize canonical timeline schema (`us` + frame mapping).~~ ✅ Done — microsecond storage with frame conversion.
+2. ~~Build `Start Editing` backend pipeline with transcript + cut outputs.~~ ✅ Done — `start_editing_pipeline.mjs` (1067 lines).
+3. ~~Build `Edit Now` planner with template registry constraints.~~ ✅ Done — `edit_now_pipeline.mjs` (1404 lines).
+4. ~~Integrate free asset provider adapters and motion defaults.~~ ✅ Done — Pexels/Pixabay/Unsplash adapters.
+5. ~~Implement local model discovery/selection/install service.~~ ✅ Done — `model_runtime_discovery.mjs` (463 lines).
+6. **Build rough-cut timeline UI with drag/trim/split.** 🔴 In Progress — timeline renders clips but lacks trim/split/undo.
+7. **Finalize desktop architecture and `.dmg` pipeline.** 🔴 Tauri shell exists, build pipeline not verified.
+8. **Add render queue, output delivery, and Metal/video-hardware acceleration.** 🟡 Render pipeline exists, no queue UI or progress streaming.
+9. **Implement workflow orchestrator and job states.** 🟡 Pipeline stages exist but no formal state machine with persistence.
+
+## 23. Implementation Status (February 18, 2026 Audit)
+
+| Module | PRD Section | Status | Coverage |
+|--------|:-----------:|--------|:--------:|
+| Project Setup | §7.1 | Wizard collects settings; `handleSubmit` only sends name+fps (bug) | 🟡 60% |
+| Media Ingest | §7.2 | Upload + ffprobe metadata works; no proxy/waveform generation | 🟡 65% |
+| AI Transcription | §7.3 | whisper.cpp local adapter + SRT/VTT; API adapter is stub | 🟢 80% |
+| AI Cut Recommendation | §7.4 | Silence + filler + repetition detection + Ollama; no per-cut review UI | 🟡 70% |
+| Timeline Editor | §7.5 | Clip visualization + click-to-seek; **no trim/split/undo/zoom** | 🔴 25% |
+| Agentic Enrichment | §7.6 | Template placement + constraint validation; no LLM integration | 🟡 55% |
+| External Asset Fetching | §7.7 | All 3 providers + caching + retry; no UI for manual query override | 🟢 75% |
+| Final Review + Render | §7.8 | ffmpeg segment render + overlay compositor; no render queue UI | 🟡 50% |
+| Local Model Management | §7.9 | Discovery for 4 runtimes; UI only shows 2 hardcoded models | 🟡 55% |
+| macOS Distribution | §7.10 | Tauri shell + notarize script; build pipeline untested | 🔴 20% |
+
+### Key Files
+- **Backend**: `desktop/backend/server.mjs` (820 lines)
+- **Context/State**: `src/context/EditorContext.tsx` (875 lines)
+- **Pipeline Scripts**: `scripts/start_editing_pipeline.mjs`, `edit_now_pipeline.mjs`, `render_pipeline.mjs`
+- **Model Discovery**: `scripts/model_runtime_discovery.mjs`, `model_runtime_health.mjs`
+- **Templates**: `src/templates/` (11 categories, 50+ templates, `registry.ts`)
+- **Tests**: `tests/unit/`, `tests/integration/`, `tests/e2e/`

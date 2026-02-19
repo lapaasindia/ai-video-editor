@@ -70,7 +70,7 @@ import './templates/social-hooks/TimelineSteps01';
 import './templates/social-hooks/AutoWhoosh01';
 
 const EditorLayout = () => {
-    const { currentProject } = useEditor();
+    const { currentProject, backendAvailable, saveProject, renderVideo, closeProject } = useEditor();
     const [showSettings, setShowSettings] = useState(false);
 
     const handleDrop = async (e: React.DragEvent) => {
@@ -108,7 +108,7 @@ const EditorLayout = () => {
             <header className="menu-bar">
                 <div className="menu-bar-left">
                     <div className="app-logo">
-                        <span className="app-name">Lapaas Frame</span>
+                        <span className="app-name">Lapaas AI Editor</span>
                     </div>
                     <nav className="app-menu">
                         <button className="menu-item active">Edit</button>
@@ -121,13 +121,52 @@ const EditorLayout = () => {
                     <span className="project-title">{currentProject?.name || 'Untitled Project'}</span>
                 </div>
                 <div className="menu-bar-right">
-                    <button className="action-button primary">Export</button>
+                    <button
+                        className="action-button secondary"
+                        onClick={() => saveProject && saveProject()}
+                        title="Save Project (Cmd+S)"
+                        style={{ marginRight: 10 }}
+                    >
+                        Save
+                    </button>
+                    {currentProject && (
+                        <button
+                            className="action-button secondary"
+                            onClick={() => closeProject && closeProject()}
+                            title="Close current project"
+                            style={{ marginRight: 10 }}
+                        >
+                            Close
+                        </button>
+                    )}
+                    <div
+                        title={backendAvailable ? 'Backend server connected' : 'Backend server not running – start it with: npm run desktop:backend'}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            fontSize: 11,
+                            color: backendAvailable ? '#2ecc71' : '#e74c3c',
+                            marginRight: 8,
+                            cursor: 'default',
+                        }}
+                    >
+                        <span style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            background: backendAvailable ? '#2ecc71' : '#e74c3c',
+                            display: 'inline-block',
+                        }} />
+                        {backendAvailable ? 'Backend' : 'No Backend'}
+                    </div>
+                    <button className="action-button primary" onClick={() => renderVideo && renderVideo()}>Export</button>
                 </div>
             </header>
 
-            <div className="main-content">
+            <div className="workspace">
                 <ProjectPanel />
-                <div className="center-panel">
+                <div className="center-area">
                     <PreviewPanel />
                     <TimelinePanel />
                 </div>
@@ -139,14 +178,18 @@ const EditorLayout = () => {
     );
 };
 
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+
 function App() {
     return (
-        <EditorProvider>
-            <div className="app-container">
-                <EditorLayout />
-                <LogViewer />
-            </div>
-        </EditorProvider>
+        <ErrorBoundary>
+            <EditorProvider>
+                <div className="app-container">
+                    <EditorLayout />
+                    <LogViewer />
+                </div>
+            </EditorProvider>
+        </ErrorBoundary>
     );
 }
 

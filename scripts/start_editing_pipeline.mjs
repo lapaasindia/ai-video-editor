@@ -384,7 +384,7 @@ async function transcribeWithWhisperCpp(adapter, inputPath) {
       // -of specifies output filename WITHOUT extension.
     ];
 
-    console.log(`[WhisperCpp] Running: ${binary} ${args.join(' ')}`);
+    console.error(`[WhisperCpp] Running: ${binary} ${args.join(' ')}`);
     await runWithOutput(binary, args, 10 * 60 * 1000); // 10 min timeout
 
     const jsonPath = `${outputBase}.json`;
@@ -631,7 +631,7 @@ async function generateCutPlanWithOllama(transcriptPayload, model) {
   const userPrompt = `Transcript:\n${JSON.stringify(simplifiedTranscript, null, 2)}\n\nGenerate the cut plan JSON.`;
 
   try {
-    console.log(`[Ollama] Generating cut plan with ${model}...`);
+    console.error(`[Ollama] Generating cut plan with ${model}...`);
 
     // Write prompt to temp file to avoid shell escaping issues and stdin weirdness
     const promptPath = path.join(os.tmpdir(), `ollama_prompt_${Date.now()}.txt`);
@@ -866,7 +866,7 @@ async function main() {
 
       if (adapter.kind === 'local' && adapter.runtime === 'whisper_cpp') {
         try {
-          console.log('Starting local Whisper transcription...');
+          console.error('Starting local Whisper transcription...');
           const raw = await transcribeWithWhisperCpp(adapter, inputPath);
           transcript = normalizeWhisperTranscript(raw, durationUs);
         } catch (e) {

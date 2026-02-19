@@ -27,7 +27,13 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
     const handleBack = () => setStep(prev => prev - 1);
 
     const handleSubmit = async () => {
-        await createProject(formData.name, Number(formData.fps));
+        await createProject(formData.name, Number(formData.fps), {
+            aspectRatio: formData.aspectRatio,
+            resolution: formData.resolution,
+            language: formData.language,
+            aiMode: formData.aiMode,
+            transcriptionModel: formData.transcriptionModel,
+        });
         onClose();
     };
 

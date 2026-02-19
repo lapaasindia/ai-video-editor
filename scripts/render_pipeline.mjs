@@ -376,7 +376,7 @@ async function preRenderTemplates(timeline, tempDir, profile) {
 
   if (templateClips.length === 0) return results;
 
-  console.log(`[Render] Pre-rendering ${templateClips.length} templates...`);
+  console.error(`[Render] Pre-rendering ${templateClips.length} templates...`);
 
   for (const clip of templateClips) {
     const compositionId = `${clip.templateId}-landscape`; // Default to landscape for now

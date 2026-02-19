@@ -120,9 +120,35 @@ async function readProjectTelemetry(projectId, limit = 60) {
   };
 }
 
+function stateFile(projectId) {
+  return path.join(rootDir, 'desktop', 'data', projectId, 'state.json');
+}
+
+async function ensureStateStore(projectId) {
+  const file = stateFile(projectId);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  return file;
+}
+
+async function writeState(projectId, state) {
+  const file = await ensureStateStore(projectId);
+  await fs.writeFile(file, JSON.stringify(state, null, 2), 'utf8');
+}
+
+async function readState(projectId) {
+  const file = stateFile(projectId);
+  try {
+    const raw = await fs.readFile(file, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 async function writeTimeline(timeline) {
+  if (!timeline.projectId) return;
   const file = await ensureTimelineStore(timeline.projectId);
-  await fs.writeFile(file, `${JSON.stringify(timeline, null, 2)}\n`, 'utf8');
+  await fs.writeFile(file, JSON.stringify(timeline, null, 2), 'utf8');
 }
 
 function normalizeRanges(ranges, durationUs) {
@@ -299,6 +325,40 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && route === '/models/health') {
       const output = await runNodeScript(modelHealthScript);
       sendJson(res, 200, JSON.parse(output));
+      return;
+    }
+
+    if (method === 'POST' && route === '/models/install') {
+      const body = await readBody(req);
+      const { runtime, model } = body;
+      if (!runtime || !model) {
+        sendJson(res, 400, { error: 'runtime and model are required' });
+        return;
+      }
+      try {
+        const output = await runNodeScript(installScript, [runtime, model], 600000);
+        sendJson(res, 200, { ok: true, output });
+      } catch (e) {
+        sendJson(res, 500, { error: `Install failed: ${e.message || e}` });
+      }
+      return;
+    }
+
+    if (method === 'GET' && route === '/render/progress') {
+      const qs = req.url.split('?')[1] || '';
+      const params = new URLSearchParams(qs);
+      const projectId = params.get('projectId');
+      if (!projectId) {
+        sendJson(res, 400, { error: 'projectId is required' });
+        return;
+      }
+      const progressFile = path.join(rootDir, 'desktop', 'data', projectId, 'render_progress.json');
+      try {
+        const raw = await fs.readFile(progressFile, 'utf8');
+        sendJson(res, 200, JSON.parse(raw));
+      } catch {
+        sendJson(res, 200, { percent: 0, stage: 'queued' });
+      }
       return;
     }
 
@@ -602,8 +662,128 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const saveMatch = route.match(/^\/projects\/([^/]+)\/save$/);
+    if (method === 'POST' && saveMatch) {
+      const projectId = saveMatch[1];
+      const body = await readBody(req);
+
+      try {
+        if (body.state) {
+          await writeState(projectId, body.state);
+        }
+        if (body.timeline) {
+          await writeTimeline({ ...body.timeline, projectId });
+        }
+
+        // Update updated_at in projects.json
+        const projects = await readProjects();
+        const idx = projects.findIndex(p => p.id === projectId);
+        if (idx !== -1) {
+          projects[idx].updatedAt = new Date().toISOString();
+          await writeProjects(projects);
+        }
+
+        sendJson(res, 200, { ok: true });
+      } catch (error) {
+        console.error('Save failed', error);
+        sendJson(res, 500, { error: String(error) });
+      }
+      return;
+    }
+
+    const loadMatch = route.match(/^\/projects\/([^/]+)\/load$/);
+    if (method === 'GET' && loadMatch) {
+      const projectId = loadMatch[1];
+      try {
+        const state = await readState(projectId);
+        const timeline = await readTimeline(projectId).catch(() => null);
+
+        // Ensure we load project metadata
+        const projects = await readProjects();
+        const project = projects.find(p => p.id === projectId);
+
+        sendJson(res, 200, { ok: true, state, timeline, project });
+      } catch (error) {
+        console.error('Load failed', error);
+        sendJson(res, 500, { error: String(error) });
+      }
+      return;
+    }
+
+
+
+    // ── Serve media files via HTTP (for browser preview) ────────────────────
+    if (method === 'GET' && route === '/media/file') {
+      const qs = req.url.split('?')[1] || '';
+      const params = new URLSearchParams(qs);
+      const filePath = params.get('path');
+      if (!filePath) {
+        sendJson(res, 400, { error: 'Missing "path" query parameter.' });
+        return;
+      }
+
+      // Security: only serve files under the project data/uploads directory
+      const resolved = path.resolve(filePath);
+      const allowedDirs = [
+        path.resolve(rootDir, 'desktop', 'data'),
+      ];
+      const isAllowed = allowedDirs.some(dir => resolved.startsWith(dir));
+      if (!isAllowed) {
+        sendJson(res, 403, { error: 'Access denied.' });
+        return;
+      }
+
+      try {
+        const stat = await fs.stat(resolved);
+        const ext = path.extname(resolved).toLowerCase();
+        const mimeTypes = {
+          '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm',
+          '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska',
+          '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.aac': 'audio/aac',
+          '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+          '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+          '.gif': 'image/gif', '.webp': 'image/webp',
+        };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+        // Support Range requests (needed for video seeking)
+        const rangeHeader = req.headers.range;
+        if (rangeHeader) {
+          const parts = rangeHeader.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+          const chunkSize = end - start + 1;
+
+          const { createReadStream } = await import('node:fs');
+          const stream = createReadStream(resolved, { start, end });
+          res.writeHead(206, {
+            'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunkSize,
+            'Content-Type': contentType,
+            'Access-Control-Allow-Origin': '*',
+          });
+          stream.pipe(res);
+        } else {
+          const { createReadStream } = await import('node:fs');
+          const stream = createReadStream(resolved);
+          res.writeHead(200, {
+            'Content-Length': stat.size,
+            'Content-Type': contentType,
+            'Accept-Ranges': 'bytes',
+            'Access-Control-Allow-Origin': '*',
+          });
+          stream.pipe(res);
+        }
+      } catch (err) {
+        sendJson(res, 404, { error: `File not found: ${err.message}` });
+      }
+      return;
+    }
+
     if (method === 'POST' && route === '/media/upload') {
-      const filename = req.headers['x-filename'] || `upload-${Date.now()}.bin`;
+      const rawFilename = req.headers['x-filename'] || `upload-${Date.now()}.bin`;
+      const filename = decodeURIComponent(rawFilename);
       const safeName = path.basename(filename).replace(/[^a-zA-Z0-9.\-_]/g, '_');
       const uploadDir = path.join(rootDir, 'desktop', 'data', 'uploads');
       await fs.mkdir(uploadDir, { recursive: true });

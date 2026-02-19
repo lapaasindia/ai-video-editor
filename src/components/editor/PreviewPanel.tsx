@@ -1,9 +1,21 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Player, PlayerRef } from '@remotion/player';
 import { useEditor } from '../../context/EditorContext';
 import { AbsoluteFill, Sequence, Video, Audio, Img } from 'remotion';
 
-const TimelineComposition: React.FC<{ tracks: any[] }> = ({ tracks }) => {
+const BACKEND = 'http://localhost:43123';
+
+/** Convert a local filesystem path to a backend-served URL */
+const toMediaUrl = (filePath: string): string => {
+    if (!filePath) return '';
+    // Already a URL
+    if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('blob:')) {
+        return filePath;
+    }
+    return `${BACKEND}/media/file?path=${encodeURIComponent(filePath)}`;
+};
+
+const TimelineComposition: React.FC<{ tracks: any[]; fps: number }> = ({ tracks, fps }) => {
     return (
         <AbsoluteFill style={{ backgroundColor: '#000' }}>
             {tracks.map(track => (
@@ -18,9 +30,25 @@ const TimelineComposition: React.FC<{ tracks: any[] }> = ({ tracks }) => {
 
                         if (!Component) return null;
 
+                        const frames = Math.max(1, Math.round(clip.duration * fps));
+                        if (clip.duration <= 0) return null;
+
+                        // For video clips, use startFrom to play the correct segment of the source
+                        const startFrom = clip.type === 'video' && clip.offset
+                            ? Math.round(clip.offset * fps)
+                            : undefined;
+
                         return (
-                            <Sequence key={clip.id} from={Math.round(clip.start * 30)} durationInFrames={Math.round(clip.duration * 30)}>
-                                <Component src={clip.src} />
+                            <Sequence key={clip.id} from={Math.round(clip.start * fps)} durationInFrames={frames}>
+                                {clip.type === 'video' ? (
+                                    <Video
+                                        src={clip.src}
+                                        startFrom={startFrom}
+                                        onError={(e) => console.warn('Video load error:', e)}
+                                    />
+                                ) : (
+                                    <Component src={clip.src} />
+                                )}
                             </Sequence>
                         );
                     })}
@@ -31,18 +59,19 @@ const TimelineComposition: React.FC<{ tracks: any[] }> = ({ tracks }) => {
 };
 
 export const PreviewPanel: React.FC = () => {
-    const { tracks, currentTime, isPlaying, media } = useEditor();
+    const { tracks, currentTime, isPlaying, media, currentProject } = useEditor();
     const playerRef = useRef<PlayerRef>(null);
+    const fps = currentProject?.fps || 30;
 
     // Sync external time to player
     useEffect(() => {
         if (playerRef.current) {
-            const frame = Math.round(currentTime * 30);
+            const frame = Math.round(currentTime * fps);
             if (Math.abs(playerRef.current.getCurrentFrame() - frame) > 1) {
                 playerRef.current.seekTo(frame);
             }
         }
-    }, [currentTime]);
+    }, [currentTime, fps]);
 
     // Sync player pause/play
     useEffect(() => {
@@ -61,7 +90,7 @@ export const PreviewPanel: React.FC = () => {
                 <h3>Preview</h3>
                 <div className="panel-actions">
                     <span style={{ fontSize: '0.8rem', marginRight: '1rem' }}>
-                        {Math.round(currentTime * 30)} frames
+                        {Math.round(currentTime * fps)} frames ({fps}fps)
                     </span>
                 </div>
             </div>
@@ -74,15 +103,16 @@ export const PreviewPanel: React.FC = () => {
                             ...t,
                             clips: t.clips.map(c => ({
                                 ...c,
-                                // Resolve src here
-                                src: media.find(m => m.id === c.mediaId)?.path || ''
+                                // Resolve src: convert filesystem path to backend URL
+                                src: toMediaUrl(media.find(m => m.id === c.mediaId)?.path || '')
                             }))
-                        }))
+                        })),
+                        fps,
                     }}
-                    durationInFrames={Math.max(300, ...tracks.flatMap(t => t.clips).map(c => (c.start + c.duration) * 30))}
-                    compositionWidth={1920}
-                    compositionHeight={1080}
-                    fps={30}
+                    durationInFrames={Math.max(300, ...tracks.flatMap(t => t.clips).map(c => Math.round((c.start + c.duration) * fps)))}
+                    compositionWidth={currentProject?.width || 1920}
+                    compositionHeight={currentProject?.height || 1080}
+                    fps={fps}
                     style={{
                         width: '100%',
                         height: 'auto',

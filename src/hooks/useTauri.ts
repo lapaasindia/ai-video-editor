@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { useCallback } from 'react';
 
 // Helper to check if running in Tauri
 const isTauri = () => !!(window as any).__TAURI__;
@@ -15,9 +16,13 @@ export type TauriCommand =
     | 'install_model';
 
 export const useTauri = () => {
+    const _isTauri = isTauri();
 
-    const invokeCommand = async <T,>(cmd: TauriCommand, args: Record<string, any> = {}): Promise<T> => {
-        if (isTauri()) {
+    // useCallback with empty deps so invokeCommand has a stable reference across renders.
+    // Without this, every render creates a new invokeCommand → loadProjects re-runs →
+    // setMedia([]) clears uploaded media items.
+    const invokeCommand = useCallback(async <T,>(cmd: TauriCommand, args: Record<string, any> = {}): Promise<T> => {
+        if (_isTauri) {
             try {
                 return await invoke<T>(cmd, args);
             } catch (e) {
@@ -25,11 +30,6 @@ export const useTauri = () => {
                 throw e;
             }
         } else {
-            // Fallback for browser development (mock or fetch from local server)
-            // console.warn suppressed - expected in browser dev mode
-
-            // Basic mapping to the local node backend if available
-            // Note: functionality might be limited in browser
             if (process.env.NODE_ENV === 'development') {
                 console.debug(`[Browser] Routing command via HTTP: ${cmd}`);
             }
@@ -40,6 +40,8 @@ export const useTauri = () => {
                 'start_editing': { method: 'POST', path: '/start-editing', body: args.request },
                 'edit_now': { method: 'POST', path: '/edit-now', body: args.request },
                 'render': { method: 'POST', path: '/render', body: args.request },
+                'model_health': { method: 'GET', path: '/models/health' },
+                'install_model': { method: 'POST', path: '/models/install', body: args },
             };
 
             const route = routeMap[cmd];
@@ -62,7 +64,8 @@ export const useTauri = () => {
                 throw e;
             }
         }
-    };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [_isTauri]);
 
-    return { invokeCommand, isTauri: isTauri() };
+    return { invokeCommand, isTauri: _isTauri };
 };

@@ -68,7 +68,7 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ onClose }) => {
                                         <span className="model-desc">Balanced speed/accuracy (~140MB)</span>
                                     </div>
                                     <div className="model-action">
-                                        {health?.models['whisper-base.en'] ? (
+                                        {health?.models?.['whisper-base.en'] ? (
                                             <span className="status-badge success">Installed</span>
                                         ) : (
                                             <button
@@ -91,7 +91,7 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ onClose }) => {
                                         <span className="model-desc">Fast instruction following (~1.2GB)</span>
                                     </div>
                                     <div className="model-action">
-                                        {health?.models['llama-3.2-1b'] ? (
+                                        {health?.models?.['llama-3.2-1b'] ? (
                                             <span className="status-badge success">Installed</span>
                                         ) : (
                                             <button

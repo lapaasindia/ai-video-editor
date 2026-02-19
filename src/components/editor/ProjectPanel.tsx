@@ -1,14 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { ProjectWizard } from '../wizard/ProjectWizard';
+import { ProjectSettingsModal } from '../modals/ProjectSettingsModal';
 import { getTemplateRegistry, getCategoryLabel, TEMPLATE_CATEGORIES } from '../../templates/registry';
 
 export const ProjectPanel: React.FC = () => {
     const [activeTab, setActiveTab] = useState('project');
     const [showWizard, setShowWizard] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [projectsList, setProjectsList] = useState<any[]>([]);
     const [templateSearch, setTemplateSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState<string>('all');
-    const { currentProject, media, importMedia } = useEditor();
+    const { currentProject, media, importMedia, backendAvailable, loadProject } = useEditor();
 
     const allTemplates = useMemo(() => getTemplateRegistry(), []);
     const filteredTemplates = useMemo(() => {
@@ -21,19 +24,41 @@ export const ProjectPanel: React.FC = () => {
         });
     }, [allTemplates, templateSearch, activeCategory]);
 
+    useEffect(() => {
+        if (backendAvailable && !currentProject) {
+            fetch('http://localhost:43123/projects')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.projects) {
+                        setProjectsList(data.projects.sort((a: any, b: any) =>
+                            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+                        ));
+                    }
+                })
+                .catch(err => console.error('Failed to fetch projects', err));
+        }
+    }, [backendAvailable, currentProject]);
+
+    const handleLoad = async (id: string) => {
+        if (loadProject) {
+            await loadProject(id);
+        }
+    };
+
     return (
         <>
-            <aside className="panel panel-left" id="project-panel">
+            <div className="panel panel-left project-panel" id="project-panel">
                 <div className="panel-header">
+                    <h3>Project</h3>
                     <div className="panel-tabs">
                         <button
-                            className={`panel-tab ${activeTab === 'project' ? 'active' : ''}`}
+                            className={`tab-btn ${activeTab === 'project' ? 'active' : ''}`}
                             onClick={() => setActiveTab('project')}
                         >
                             Project
                         </button>
                         <button
-                            className={`panel-tab ${activeTab === 'templates' ? 'active' : ''}`}
+                            className={`tab-btn ${activeTab === 'templates' ? 'active' : ''}`}
                             onClick={() => setActiveTab('templates')}
                         >
                             Templates
@@ -43,15 +68,45 @@ export const ProjectPanel: React.FC = () => {
 
                 <div className="panel-content">
                     {activeTab === 'project' && (
-                        <div className="tab-content active">
-                            <div className="project-info">
-                                {!currentProject ? (
-                                    <div className="empty-state-small">
-                                        <p>No active project</p>
-                                        <button className="btn-primary btn-sm" onClick={() => setShowWizard(true)}>Create Project</button>
-                                    </div>
-                                ) : (
-                                    <>
+                        <div style={{ padding: 'var(--spacing-md)' }}>
+                            {!currentProject ? (
+                                <div style={{ padding: 20, textAlign: 'center', height: '100%', overflowY: 'auto' }}>
+                                    <div className="empty-state" style={{ marginBottom: 20 }}>No active project</div>
+                                    <button className="btn-primary" onClick={() => setShowWizard(true)} style={{ marginBottom: 20 }}>
+                                        Create New Project
+                                    </button>
+
+                                    {projectsList.length > 0 && (
+                                        <div style={{ textAlign: 'left', marginTop: 20 }}>
+                                            <h4 style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>Recent Projects</h4>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                {projectsList.map(p => (
+                                                    <div
+                                                        key={p.id}
+                                                        className="project-item"
+                                                        onClick={() => handleLoad(p.id)}
+                                                        style={{
+                                                            padding: '10px',
+                                                            background: 'var(--bg-secondary)',
+                                                            borderRadius: 6,
+                                                            cursor: 'pointer',
+                                                            border: '1px solid var(--panel-border)',
+                                                            transition: 'all 0.2s',
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: 500, fontSize: 13 }}>{p.name}</div>
+                                                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                                            {new Date(p.updatedAt).toLocaleDateString()}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="project-info">
                                         <div className="info-row">
                                             <span className="info-label">Name</span>
                                             <span className="info-value">{currentProject.name}</span>
@@ -64,16 +119,32 @@ export const ProjectPanel: React.FC = () => {
                                             <span className="info-label">Settings</span>
                                             <span className="info-value">{currentProject.fps}fps / {currentProject.aspectRatio || '16:9'}</span>
                                         </div>
-                                    </>
+                                        <button
+                                            className="btn-text btn-sm"
+                                            style={{ marginTop: 8, width: '100%', textAlign: 'center', fontSize: 11, color: 'var(--accent-primary)' }}
+                                            onClick={() => setShowSettings(true)}
+                                        >
+                                            Edit Settings
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+
+                            <div className="section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <h3>Media</h3>
+                                {currentProject && (
+                                    <button className="btn-secondary btn-sm" onClick={() => importMedia()} title="Import video, audio or image">
+                                        + Import
+                                    </button>
                                 )}
                             </div>
 
-                            <div className="section-header">
-                                <h3>Media</h3>
-                            </div>
-
                             <div className="media-grid">
-                                {media.length === 0 ? (
+                                {!currentProject ? (
+                                    <div className="empty-state-small">
+                                        <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>Create a project to import media</p>
+                                    </div>
+                                ) : media.length === 0 ? (
                                     <div className="empty-state-small">
                                         <p>No media imported</p>
                                         <button className="btn-secondary btn-sm" onClick={() => importMedia()}>Import Video</button>
@@ -98,7 +169,7 @@ export const ProjectPanel: React.FC = () => {
                                                     <div className="spinner-small" title="Processing..."></div>
                                                 ) : item.status === 'error' ? (
                                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" strokeWidth="2">
-                                                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                                                        <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                                                     </svg>
                                                 ) : (
                                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -118,9 +189,9 @@ export const ProjectPanel: React.FC = () => {
                     )}
 
                     {activeTab === 'templates' && (
-                        <div className="tab-content active">
+                        <div style={{ padding: 'var(--spacing-md)' }}>
                             <div className="search-box">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                                 <input
                                     type="text"
                                     placeholder="Search templates..."
@@ -158,9 +229,11 @@ export const ProjectPanel: React.FC = () => {
                         </div>
                     )}
                 </div>
-            </aside>
+            </div>
 
-            {showWizard && <ProjectWizard onClose={() => setShowWizard(false)} />}
+            {showWizard && <ProjectWizard onClose={() => setShowWizard(false)} />
+            }
+            {showSettings && <ProjectSettingsModal onClose={() => setShowSettings(false)} />}
         </>
     );
 };
