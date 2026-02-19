@@ -6,6 +6,7 @@ import os from 'node:os';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createStageTracker, recordProjectTelemetry } from './lib/pipeline_telemetry.mjs';
+import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
 import {
   validateCanonicalTranscript,
   validateCutPlan,
@@ -1048,11 +1049,15 @@ async function main() {
   const fps = Number(readArg('--fps', '30')) || 30;
   const fallbackPolicy = safeFallbackPolicy(readArg('--fallback-policy', 'local-first'));
   const transcriptionModel = readArg('--transcription-model', '').trim();
+  // Accept pre-known duration (from ingest metadata) to skip ffprobe on large files
+  const knownDurationSec = Number(readArg('--duration-sec', '0')) || 0;
+  // Auto-detect best LLM: Codex CLI → OpenAI → Google → Anthropic → Ollama
+  const autoLLM = await detectBestLLM();
   const cutPlannerModel =
     readArg('--cut-planner-model', '').trim() ||
     process.env.LAPAAS_CUT_PLANNER_MODEL ||
-    'qwen3:1.7b';
-  const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || 'ollama');
+    autoLLM.model;
+  const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || autoLLM.provider);
   const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || cutPlannerModel);
   const llmConfig = { provider: llmProvider, model: llmModel };
 
@@ -1111,7 +1116,10 @@ async function main() {
       startedAt,
     });
 
-    durationUs = await tracker.run('duration-probe', () => getDurationUs(inputPath));
+    // Use pre-known duration from ingest metadata if available — skips ffprobe on large files
+    durationUs = knownDurationSec > 0
+      ? Math.round(knownDurationSec * 1_000_000)
+      : await tracker.run('duration-probe', () => getDurationUs(inputPath));
     // Skip CPU-heavy silence detection when using API-based transcription (Sarvam).
     // AI cut planning (Codex) will derive cuts from the transcript instead.
     if (adapter.runtime === 'sarvam') {
