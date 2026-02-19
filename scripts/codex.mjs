@@ -18,7 +18,7 @@ import path from 'node:path';
 import 'dotenv/config'; // Load .env
 import readline from 'node:readline';
 import { spawn } from 'node:child_process';
-import { runLLMPrompt, extractJsonFromLLMOutput, getAvailableModels } from './lib/llm_provider.mjs';
+import { runLLMPrompt, extractJsonFromLLMOutput, getAvailableModels, isCodexAvailable } from './lib/llm_provider.mjs';
 
 const PROJECT_ROOT = path.resolve('.');
 const DATA_DIR = path.join(PROJECT_ROOT, 'desktop', 'data');
@@ -102,15 +102,37 @@ async function selectProject(idOrName) {
 }
 
 // ── Auto-Detect LLM ─────────────────────────────────────────────────────────
+// Priority: Codex CLI → OpenAI → Google → Anthropic → Ollama (local)
 
-function detectBestLLM() {
-    if (process.env.GOOGLE_API_KEY) {
-        return { provider: 'google', model: 'gemini-2.0-flash' };
+async function detectBestLLM() {
+    // 1. Codex CLI — best quality, uses OpenAI models via CLI
+    //    Requires OPENAI_API_KEY + codex binary (or npx fallback)
+    if (process.env.OPENAI_API_KEY && await isCodexAvailable()) {
+        console.error('[LLM] Using Codex CLI (o4-mini)');
+        return { provider: 'codex', model: 'o4-mini' };
     }
+
+    // 2. OpenAI API directly (if key set but codex not installed)
     if (process.env.OPENAI_API_KEY) {
+        console.error('[LLM] Using OpenAI API (gpt-4o-mini)');
         return { provider: 'openai', model: 'gpt-4o-mini' };
     }
-    return { provider: 'ollama', model: 'qwen3:1.7b' }; // Fallback
+
+    // 3. Google Gemini
+    if (process.env.GOOGLE_API_KEY) {
+        console.error('[LLM] Using Google Gemini (gemini-2.0-flash)');
+        return { provider: 'google', model: 'gemini-2.0-flash' };
+    }
+
+    // 4. Anthropic Claude
+    if (process.env.ANTHROPIC_API_KEY) {
+        console.error('[LLM] Using Anthropic Claude (claude-3-5-haiku-20241022)');
+        return { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' };
+    }
+
+    // 5. Ollama local — always available as last resort
+    console.error('[LLM] Using Ollama local (qwen3:1.7b)');
+    return { provider: 'ollama', model: 'qwen3:1.7b' };
 }
 
 // ── Natural Language Handler ───────────────────────────────────────────────

@@ -16,7 +16,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { runLLMPrompt, extractJsonFromLLMOutput } from './lib/llm_provider.mjs';
+import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
 
 function readArg(flag, fallback = '') {
     const idx = process.argv.indexOf(flag);
@@ -281,8 +281,12 @@ async function main() {
     const chunkStartUs = Number(readArg('--chunk-start-us', '0'));
     const chunkEndUs = Number(readArg('--chunk-end-us', '60000000'));
     const mode = readArg('--mode', 'auto'); // auto, llm, heuristic
-    const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || 'ollama');
-    const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || 'qwen3:1.7b');
+    // Priority: explicit arg → env override → auto-detect (Codex CLI → OpenAI → Google → Anthropic → Ollama)
+    const argProvider = readArg('--llm-provider', '');
+    const argModel = readArg('--llm-model', '');
+    const autoConfig = (argProvider || argModel) ? null : await detectBestLLM();
+    const llmProvider = argProvider || autoConfig?.provider || 'ollama';
+    const llmModel = argModel || autoConfig?.model || 'qwen3:1.7b';
 
     if (!projectId) throw new Error('Missing --project-id');
 

@@ -17,10 +17,21 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { promisify } from 'node:util';
+import { execFile } from 'node:child_process';
 
 // ── Provider Catalog ────────────────────────────────────────────────────────
 
 export const PROVIDER_CATALOG = {
+    codex: {
+        label: 'OpenAI Codex CLI',
+        type: 'local-cli',
+        envKey: 'OPENAI_API_KEY',
+        models: [
+            { id: 'o4-mini', label: 'o4-mini (Default Codex)', default: true },
+            { id: 'o3', label: 'o3 (Reasoning)' },
+            { id: 'gpt-4.1', label: 'GPT-4.1' },
+        ],
+    },
     ollama: {
         label: 'Ollama (Local)',
         type: 'local',
@@ -119,14 +130,61 @@ export function getProviderType(provider) {
     return PROVIDER_CATALOG[provider]?.type || 'local';
 }
 
+// Cache codex availability so we don't shell out on every call
+let _codexAvailable = null;
+
+export async function isCodexAvailable() {
+    if (_codexAvailable !== null) return _codexAvailable;
+    return new Promise((resolve) => {
+        execFile('which', ['codex'], (err) => {
+            if (!err) { _codexAvailable = true; resolve(true); return; }
+            // Also check npx @openai/codex availability via OPENAI_API_KEY presence
+            // (npx can run it but we need the key)
+            _codexAvailable = false;
+            resolve(false);
+        });
+    });
+}
+
 export function isProviderAvailable(provider) {
     const catalog = PROVIDER_CATALOG[provider];
     if (!catalog) return false;
     if (catalog.type === 'local') return true; // Assumed available if Ollama running
+    if (catalog.type === 'local-cli') return Boolean(process.env[catalog.envKey]); // Codex needs OPENAI_API_KEY
     return Boolean(process.env[catalog.envKey]);
 }
 
 // ── LLM Execution ───────────────────────────────────────────────────────────
+
+async function runCodex(model, prompt, timeoutMs) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error('OPENAI_API_KEY not set — required for Codex CLI');
+
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            child.kill();
+            reject(new Error(`Codex CLI timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+
+        // Use codex if installed globally, otherwise fall back to npx
+        const codexBin = _codexAvailable ? 'codex' : 'npx';
+        const codexArgs = _codexAvailable
+            ? ['--model', model, '--quiet', prompt]
+            : ['--yes', '@openai/codex', '--model', model, '--quiet', prompt];
+
+        const child = execFile(codexBin, codexArgs, {
+            env: { ...process.env, OPENAI_API_KEY: apiKey },
+            maxBuffer: 10 * 1024 * 1024, // 10MB
+        }, (err, stdout, stderr) => {
+            clearTimeout(timer);
+            if (err) {
+                reject(new Error(`Codex CLI error: ${err.message}\n${stderr}`));
+                return;
+            }
+            resolve(stdout.trim());
+        });
+    });
+}
 
 async function runOllama(model, prompt, timeoutMs) {
     const controller = new AbortController();
@@ -323,6 +381,9 @@ export async function runLLMPrompt(config, prompt, timeoutMs = 180000) {
     console.error(`[LLM] Provider: ${provider}, Model: ${model}`);
 
     switch (provider) {
+        case 'codex':
+            await isCodexAvailable(); // warm the cache
+            return runCodex(model, prompt, timeoutMs);
         case 'ollama':
             return runOllama(model, prompt, timeoutMs);
         case 'openai':
@@ -334,7 +395,7 @@ export async function runLLMPrompt(config, prompt, timeoutMs = 180000) {
         case 'sarvam':
             return runSarvam(model, prompt, timeoutMs);
         default:
-            throw new Error(`Unknown LLM provider: ${provider}. Use: ollama, openai, google, anthropic, sarvam`);
+            throw new Error(`Unknown LLM provider: ${provider}. Use: codex, ollama, openai, google, anthropic, sarvam`);
     }
 }
 
@@ -350,6 +411,50 @@ export function extractJsonFromLLMOutput(text) {
     const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
     if (arrayMatch) return JSON.parse(arrayMatch[0]);
     throw new Error('No valid JSON found in LLM output');
+}
+
+/**
+ * Auto-detect the best available LLM provider.
+ * Priority: Codex CLI → OpenAI → Google → Anthropic → Ollama (local)
+ *
+ * @returns {Promise<{ provider: string, model: string }>}
+ */
+export async function detectBestLLM() {
+    // Honour explicit env override first
+    if (process.env.LAPAAS_LLM_PROVIDER) {
+        const provider = process.env.LAPAAS_LLM_PROVIDER;
+        const model = process.env.LAPAAS_LLM_MODEL || getDefaultModel(provider);
+        console.error(`[LLM] Using env override: ${provider}/${model}`);
+        return { provider, model };
+    }
+
+    // 1. Codex CLI — needs OPENAI_API_KEY + codex binary (or npx fallback)
+    if (process.env.OPENAI_API_KEY) {
+        const codexReady = await isCodexAvailable();
+        if (codexReady) {
+            console.error('[LLM] Using Codex CLI (o4-mini)');
+            return { provider: 'codex', model: 'o4-mini' };
+        }
+        // 2. OpenAI API directly
+        console.error('[LLM] Using OpenAI API (gpt-4o-mini)');
+        return { provider: 'openai', model: 'gpt-4o-mini' };
+    }
+
+    // 3. Google Gemini
+    if (process.env.GOOGLE_API_KEY) {
+        console.error('[LLM] Using Google Gemini (gemini-2.0-flash)');
+        return { provider: 'google', model: 'gemini-2.0-flash' };
+    }
+
+    // 4. Anthropic Claude
+    if (process.env.ANTHROPIC_API_KEY) {
+        console.error('[LLM] Using Anthropic Claude (claude-3-5-haiku-20241022)');
+        return { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' };
+    }
+
+    // 5. Ollama local — always available as last resort
+    console.error('[LLM] Using Ollama local (qwen3:1.7b)');
+    return { provider: 'ollama', model: 'qwen3:1.7b' };
 }
 
 /**
