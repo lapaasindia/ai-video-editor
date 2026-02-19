@@ -848,7 +848,7 @@ function clampRanges(ranges, durationUs) {
   return merged;
 }
 
-import { runLLMPrompt, extractJsonFromLLMOutput } from './lib/llm_provider.mjs';
+
 
 async function generateCutPlanWithOllama(transcriptPayload, llmConfig) {
   const segments = (transcriptPayload.segments || []);
