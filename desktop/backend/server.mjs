@@ -3,13 +3,31 @@
 import http from 'node:http';
 import { execFile as execFileCb } from 'node:child_process';
 import fs from 'node:fs/promises';
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+
+// Load .env from project root so API keys reach all child processes
+{
+    const envPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.env');
+    if (existsSync(envPath)) {
+        const lines = (await fs.readFile(envPath, 'utf8')).split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const eq = trimmed.indexOf('=');
+            if (eq === -1) continue;
+            const key = trimmed.slice(0, eq).trim();
+            const val = trimmed.slice(eq + 1).trim();
+            if (key && val && !process.env[key]) process.env[key] = val;
+        }
+        console.log('[Server] Loaded .env');
+    }
+}
 
 const execFile = promisify(execFileCb);
 const __filename = fileURLToPath(import.meta.url);
