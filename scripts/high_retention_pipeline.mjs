@@ -19,8 +19,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile as execFileCb } from 'node:child_process';
+import { promisify } from 'node:util';
 import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
 import { parallelMap } from './lib/metal_accel.mjs';
+
+const execFile = promisify(execFileCb);
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -413,6 +417,43 @@ async function main() {
                 aiReason: `chunk-${d.chunkIndex}`,
             });
         }
+    }
+
+    // 10. Auto-download Pexels images if API key is available
+    const pexelsKey = process.env.PEXELS_API_KEY;
+    const fetchScript = path.join(ROOT_DIR, 'scripts', 'fetch_free_assets.mjs');
+    if (pexelsKey) {
+        const imageAssets = assetSuggestions.filter(a => a.kind === 'image');
+        console.error(`[HR] Downloading ${imageAssets.length} Pexels images (concurrency=4)...`);
+        await parallelMap(imageAssets, async (asset) => {
+            try {
+                const { stdout } = await execFile('node', [
+                    fetchScript,
+                    '--project-id', projectId,
+                    '--project-dir', projectDir,
+                    '--query', asset.query,
+                    '--kind', 'image',
+                    '--provider', 'pexels',
+                ], {
+                    env: { ...process.env },
+                    timeout: 30_000,
+                    maxBuffer: 1024 * 1024,
+                });
+                const result = JSON.parse(stdout.trim());
+                if (result.ok && result.localPath) {
+                    asset.localPath = result.localPath;
+                    asset.creator = result.creator;
+                    asset.license = result.license;
+                    console.error(`[HR] Downloaded: ${path.basename(result.localPath)}`);
+                }
+            } catch (e) {
+                console.error(`[HR] Asset download failed (${asset.query.slice(0, 40)}): ${e.message.slice(0, 80)}`);
+            }
+        }, 4);
+        const downloaded = assetSuggestions.filter(a => a.localPath).length;
+        console.error(`[HR] Assets downloaded: ${downloaded}/${imageAssets.length}`);
+    } else {
+        console.error('[HR] PEXELS_API_KEY not set — skipping asset download (queries saved for later)');
     }
 
     const plan = {
