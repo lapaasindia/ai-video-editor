@@ -107,9 +107,9 @@ async function selectProject(idOrName) {
 async function detectBestLLM() {
     // 1. Codex CLI — best quality, uses OpenAI models via CLI
     //    Requires OPENAI_API_KEY + codex binary (or npx fallback)
-    if (process.env.OPENAI_API_KEY && await isCodexAvailable()) {
-        console.error('[LLM] Using Codex CLI (o4-mini)');
-        return { provider: 'codex', model: 'o4-mini' };
+    if (await isCodexAvailable()) {
+        console.error('[LLM] Using Codex CLI (gpt-5.2)');
+        return { provider: 'codex', model: 'gpt-5.2' };
     }
 
     // 2. OpenAI API directly (if key set but codex not installed)

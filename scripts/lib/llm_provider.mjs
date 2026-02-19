@@ -27,9 +27,10 @@ export const PROVIDER_CATALOG = {
         type: 'local-cli',
         envKey: 'OPENAI_API_KEY',
         models: [
-            { id: 'o4-mini', label: 'o4-mini (Default Codex)', default: true },
+            { id: 'gpt-5.2', label: 'GPT-5.2 (Default)', default: true },
+            { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+            { id: 'o4-mini', label: 'o4-mini' },
             { id: 'o3', label: 'o3 (Reasoning)' },
-            { id: 'gpt-4.1', label: 'GPT-4.1' },
         ],
     },
     ollama: {
@@ -169,9 +170,9 @@ async function runCodex(model, prompt, timeoutMs) {
 
         const args = ['exec', '--sandbox', 'workspace-write'];
 
-        // Only override model if explicitly requested and not the default
-        if (model && model !== 'gpt-5.3-codex') {
-            args.push('-c', `model="${model}"`);
+        // Only override model if explicitly requested and differs from config.toml default
+        if (model && model !== 'gpt-5.2') {
+            args.push('-m', model);
         }
 
         args.push(prompt);
@@ -479,8 +480,8 @@ export async function detectBestLLM() {
 
     // 1. Codex CLI — uses ChatGPT login, no API key needed
     if (await isCodexAvailable()) {
-        console.error('[LLM] Using Codex CLI (gpt-5.3-codex via ChatGPT login)');
-        return { provider: 'codex', model: 'gpt-5.3-codex' };
+        console.error('[LLM] Using Codex CLI (gpt-5.2 via ChatGPT login)');
+        return { provider: 'codex', model: 'gpt-5.2' };
     }
 
     // 2. OpenAI API directly (if key set)
