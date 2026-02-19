@@ -1112,7 +1112,14 @@ async function main() {
     });
 
     durationUs = await tracker.run('duration-probe', () => getDurationUs(inputPath));
-    silenceRanges = await tracker.run('silence-analysis', () => detectSilenceRanges(inputPath, durationUs));
+    // Skip CPU-heavy silence detection when using API-based transcription (Sarvam).
+    // AI cut planning (Codex) will derive cuts from the transcript instead.
+    if (adapter.runtime === 'sarvam') {
+      console.error('[Pipeline] Sarvam mode — skipping local silence detection (AI will plan cuts from transcript)');
+      silenceRanges = [];
+    } else {
+      silenceRanges = await tracker.run('silence-analysis', () => detectSilenceRanges(inputPath, durationUs));
+    }
 
     transcriptPayload = await tracker.run('transcription-synthesis', async () => {
       let transcript;
