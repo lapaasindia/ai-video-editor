@@ -7,7 +7,7 @@ import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createStageTracker, recordProjectTelemetry } from './lib/pipeline_telemetry.mjs';
 import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
-import { audioExtractArgs, parallelMap, detectHWAccel } from './lib/metal_accel.mjs';
+import { audioExtractArgs, parallelMap, detectHWAccel, isMlxWhisperAvailable, transcribeWithMlxWhisper } from './lib/metal_accel.mjs';
 import {
   validateCanonicalTranscript,
   validateCutPlan,
@@ -1160,17 +1160,39 @@ async function main() {
           console.error('Starting Sarvam AI transcription (Hindi-optimized)...');
           transcript = await transcribeWithSarvam(inputPath, language);
         } catch (e) {
-          console.error('Sarvam transcription failed, trying local fallback:', e.message);
-          const localFallback = await detectLocalTranscriptionRuntime();
-          if (localFallback.available && localFallback.runtime === 'faster_whisper') {
-            try {
-              const raw = await transcribeWithFasterWhisper({ ...adapter, binary: localFallback.binary, model: 'auto' }, inputPath);
-              transcript = normalizeFasterWhisperTranscript(raw, durationUs);
-            } catch (e2) {
-              console.error('Local fallback also failed:', e2.message);
-              transcript = buildSyntheticTranscript({ durationUs, mode, language, adapter: 'sarvam:fallback' });
+          console.error('Sarvam transcription failed, trying mlx_whisper (Metal GPU) fallback:', e.message);
+          try {
+            const mlxAvailable = await isMlxWhisperAvailable();
+            if (mlxAvailable) {
+              console.error('[Metal] Running mlx_whisper large-v3-turbo on Metal GPU...');
+              const tmpOut = path.join(os.tmpdir(), `mlx_whisper_${Date.now()}`);
+              await fs.mkdir(tmpOut, { recursive: true });
+              await transcribeWithMlxWhisper(inputPath, language, tmpOut);
+              const jsonFile = path.join(tmpOut, path.basename(inputPath) + '.json');
+              const raw = JSON.parse(await fs.readFile(jsonFile, 'utf8'));
+              // Normalize mlx_whisper output to canonical transcript format
+              const mlxSegments = (raw.segments || []).map((s, i) => ({
+                id: `seg-${i}`,
+                startUs: Math.round((s.start || 0) * 1_000_000),
+                endUs: Math.round((s.end || 0) * 1_000_000),
+                text: (s.text || '').trim(),
+                words: buildWords((s.text || '').trim(),
+                  Math.round((s.start || 0) * 1_000_000),
+                  Math.round((s.end || 0) * 1_000_000)),
+                confidence: 0.9,
+              }));
+              transcript = {
+                language,
+                segments: mlxSegments,
+                words: mlxSegments.flatMap(s => s.words),
+                wordCount: mlxSegments.reduce((n, s) => n + s.words.length, 0),
+              };
+              await fs.rm(tmpOut, { recursive: true }).catch(() => {});
+            } else {
+              throw new Error('mlx_whisper not available');
             }
-          } else {
+          } catch (e2) {
+            console.error('mlx_whisper fallback also failed:', e2.message);
             transcript = buildSyntheticTranscript({ durationUs, mode, language, adapter: 'sarvam:fallback' });
           }
         }
