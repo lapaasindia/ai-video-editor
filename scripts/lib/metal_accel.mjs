@@ -109,13 +109,12 @@ export async function hwEncodeAudioArgs({ bitrate = '160k' } = {}) {
 }
 
 /**
- * Returns ffmpeg args for fast audio extraction (for Sarvam chunking).
- * Uses VideoToolbox decode to speed up demuxing from large video files.
+ * Returns ffmpeg args for audio extraction (for Sarvam chunking / silence detection).
+ * -hwaccel videotoolbox is a video decoder flag and must NOT be used for audio-only
+ * operations — it has no benefit and can fail on audio-only input files.
  */
 export async function audioExtractArgs() {
-    const hw = await detectHWAccel();
-    const decodeArgs = hw.videotoolbox ? ['-hwaccel', 'videotoolbox'] : [];
-    return decodeArgs;
+    return [];
 }
 
 // ── Parallel Chunk Processor ─────────────────────────────────────────────────
