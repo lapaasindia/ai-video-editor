@@ -155,13 +155,23 @@ Respond ONLY with JSON:
         for (const action of plan.actions) {
             console.log(`\nExecuting: ${action.tool} (${action.reason})...`);
 
+            const extraArgs = [];
+            // Try to auto-detect input from project if possible
+            const metadataFile = path.join(DATA_DIR, currentProject.id, 'media', 'metadata.json');
+            if (await fileExists(metadataFile)) {
+                try {
+                    const meta = JSON.parse(await fs.readFile(metadataFile, 'utf8'));
+                    if (meta.sourcePath) extraArgs.push('--input', meta.sourcePath);
+                } catch { }
+            }
+
             if (action.tool === 'transcribe') {
-                await runScript('transcribe_only.mjs', ['--project-id', currentProject.id]);
+                await runScript('transcribe_only.mjs', ['--project-id', currentProject.id, ...extraArgs]);
             } else if (action.tool === 'cut_plan') {
-                await runScript('cut_plan_only.mjs', ['--project-id', currentProject.id]);
+                await runScript('cut_plan_only.mjs', ['--project-id', currentProject.id, ...extraArgs]);
             } else if (action.tool === 'overlay_plan') {
                 // For CLI, just do the first chunk or all? Let's do chunk 0 for now as a demo
-                await runScript('overlay_plan_chunk.mjs', ['--project-id', currentProject.id, '--chunk-index', '0']);
+                await runScript('overlay_plan_chunk.mjs', ['--project-id', currentProject.id, '--chunk-index', '0', ...extraArgs]);
             } else if (action.tool === 'fetch_asset') {
                 await runScript('fetch_free_assets.mjs', ['--project-id', currentProject.id, '--query', action.query || 'background', '--kind', action.kind || 'image']);
             }
@@ -255,11 +265,33 @@ async function processCommand(cmd, args) {
                 break;
             case 'transcribe':
                 if (!currentProject) { console.log('Select a project first (use "select").'); break; }
-                await runScript('transcribe_only.mjs', ['--project-id', currentProject.id]);
+                const tArgs = ['--project-id', currentProject.id, ...args];
+                // Auto-detect input if not provided
+                if (!tArgs.includes('--input')) {
+                    const tMetaFile = path.join(DATA_DIR, currentProject.id, 'media', 'metadata.json');
+                    if (await fileExists(tMetaFile)) {
+                        try {
+                            const meta = JSON.parse(await fs.readFile(tMetaFile, 'utf8'));
+                            if (meta.sourcePath) tArgs.push('--input', meta.sourcePath);
+                        } catch { }
+                    }
+                }
+                await runScript('transcribe_only.mjs', tArgs);
                 break;
             case 'cut':
                 if (!currentProject) { console.log('Select a project first (use "select").'); break; }
-                await runScript('cut_plan_only.mjs', ['--project-id', currentProject.id]);
+                const cArgs = ['--project-id', currentProject.id, ...args];
+                // Auto-detect input if not provided
+                if (!cArgs.includes('--input')) {
+                    const cMetaFile = path.join(DATA_DIR, currentProject.id, 'media', 'metadata.json');
+                    if (await fileExists(cMetaFile)) {
+                        try {
+                            const meta = JSON.parse(await fs.readFile(cMetaFile, 'utf8'));
+                            if (meta.sourcePath) cArgs.push('--input', meta.sourcePath);
+                        } catch { }
+                    }
+                }
+                await runScript('cut_plan_only.mjs', cArgs);
                 break;
             case 'help':
                 console.log(`

@@ -426,7 +426,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 body: JSON.stringify({
                     projectId: currentProject.id,
                     input: uploadResult.path,
-                    generateProxy: true,
+                    generateProxy: false,
                     generateWaveform: false
                 })
             });
@@ -477,10 +477,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
 
         } catch (error: any) {
-            logger.error('Import Error', error);
-            const msg = error.name === 'TimeoutError'
-                ? 'Ingest timed out — the backend may still be processing. Check backend logs.'
-                : error.message;
+            const msg = error?.name === 'TimeoutError'
+                ? 'Ingest timed out — file may be too large. Try a smaller file.'
+                : (error?.message || error?.name || JSON.stringify(error) || 'Unknown error');
+            logger.error('Import Error', { message: msg, error });
             setMedia(prev => prev.map(item =>
                 item.id === tempId ? { ...item, status: 'error' as const } : item
             ));
