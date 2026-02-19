@@ -157,20 +157,14 @@ export function isProviderAvailable(provider) {
 
 // ── LLM Execution ───────────────────────────────────────────────────────────
 
-async function runCodex(model, prompt, timeoutMs) {
-    // Codex CLI supports ChatGPT login (no API key needed) or OPENAI_API_KEY
-    // Uses: codex exec --sandbox workspace-write "<prompt>"
-    // Model is read from ~/.codex/config.toml unless overridden
+// Fallback chain: if a model is unavailable/errors, try the next one
+const CODEX_MODEL_FALLBACKS = ['gpt-5.2', 'gpt-5.3-codex', 'o4-mini', 'o3'];
 
+function runCodexWithModel(model, prompt, timeoutMs) {
     return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            child.kill();
-            reject(new Error(`Codex CLI timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-
         const args = ['exec', '--sandbox', 'workspace-write'];
 
-        // Only override model if explicitly requested and differs from config.toml default
+        // Only override model if it differs from config.toml default (gpt-5.2)
         if (model && model !== 'gpt-5.2') {
             args.push('-m', model);
         }
@@ -179,19 +173,53 @@ async function runCodex(model, prompt, timeoutMs) {
 
         const child = execFile('codex', args, {
             env: { ...process.env },
-            maxBuffer: 10 * 1024 * 1024, // 10MB
+            maxBuffer: 10 * 1024 * 1024,
             cwd: process.cwd(),
         }, (err, stdout, stderr) => {
-            clearTimeout(timer);
             if (err) {
-                reject(new Error(`Codex CLI error: ${err.message}\n${stderr}`));
+                reject(new Error(`Codex CLI error (${model}): ${err.message}\n${stderr}`));
                 return;
             }
-            // Return full stdout — extractJsonFromLLMOutput will find JSON anywhere in it.
-            // Codex wraps responses in session logs so we can't just take the last line.
             resolve(stdout.trim());
         });
+
+        const timer = setTimeout(() => {
+            child.kill();
+            reject(new Error(`Codex CLI timed out after ${timeoutMs}ms (model: ${model})`));
+        }, timeoutMs);
+
+        child.on('close', () => clearTimeout(timer));
     });
+}
+
+async function runCodex(model, prompt, timeoutMs) {
+    // Build fallback chain starting from the requested model
+    const startIdx = CODEX_MODEL_FALLBACKS.indexOf(model);
+    const chain = startIdx >= 0
+        ? CODEX_MODEL_FALLBACKS.slice(startIdx)
+        : [model, ...CODEX_MODEL_FALLBACKS];
+
+    let lastError;
+    for (const m of chain) {
+        try {
+            console.error(`[Codex] Trying model: ${m}`);
+            const result = await runCodexWithModel(m, prompt, timeoutMs);
+            if (m !== model) {
+                console.error(`[Codex] Fell back to ${m} (${model} unavailable)`);
+            }
+            return result;
+        } catch (e) {
+            lastError = e;
+            const msg = e.message || '';
+            // Only fall back on model-unavailable errors, not on logic/timeout errors
+            const isModelError = msg.includes('model') || msg.includes('not found') ||
+                msg.includes('unavailable') || msg.includes('does not exist') ||
+                msg.includes('invalid model') || msg.includes('timed out');
+            if (!isModelError) throw e; // Hard error — don't retry
+            console.error(`[Codex] ${m} failed: ${msg.slice(0, 120)} — trying next model...`);
+        }
+    }
+    throw lastError;
 }
 
 async function runOllama(model, prompt, timeoutMs) {
