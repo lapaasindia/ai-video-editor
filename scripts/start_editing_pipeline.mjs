@@ -1191,7 +1191,11 @@ async function main() {
               const tmpOut = path.join(os.tmpdir(), `mlx_whisper_${Date.now()}`);
               await fs.mkdir(tmpOut, { recursive: true });
               await transcribeWithMlxWhisper(inputPath, language, tmpOut);
-              const jsonFile = path.join(tmpOut, path.basename(inputPath) + '.json');
+              // mlx_whisper may name the output file differently — scan for any .json
+              const outFiles = await fs.readdir(tmpOut);
+              const jsonName = outFiles.find(f => f.endsWith('.json'));
+              if (!jsonName) throw new Error('mlx_whisper produced no JSON output in ' + tmpOut);
+              const jsonFile = path.join(tmpOut, jsonName);
               const raw = JSON.parse(await fs.readFile(jsonFile, 'utf8'));
               // Normalize mlx_whisper output to canonical transcript format
               const mlxSegments = (raw.segments || []).map((s, i) => ({
