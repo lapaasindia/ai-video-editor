@@ -99,10 +99,7 @@ async function main() {
 
     const steps = [
         'transcription',
-        'cut_planning',
-        'template_selection',
-        'stock_suggestions',
-        'asset_resolution',
+        'high_retention_analysis',
         'timeline_assembly',
     ];
 
@@ -190,49 +187,60 @@ async function main() {
             `${results.transcription.segments} segments, ${results.transcription.removeRanges} cuts`
         );
 
-        // ── Step 2-3: Template Selection + Stock Suggestions ──────────────────
-        // These are handled by edit_now_pipeline which does both
-        currentStepIndex = 2;
-        await updateProgress('template_selection', 'running', 'AI selecting templates and stock media...');
+        // ── Step 2: High-Retention Chunk Analysis ────────────────────────────
+        // Splits transcript into 2-3 sentence topic chunks (~5-7s each).
+        // AI analyses each chunk with 2-min context window and decides:
+        //   - Template to show, image/video B-roll query, cut decision
+        // Guarantees something happens every 5-7 seconds.
+        currentStepIndex = 1;
+        await updateProgress('high_retention_analysis', 'running',
+            'AI analysing transcript chunks for high-retention editing...');
 
-        const editNowResult = await runScriptStep('edit_now_pipeline.mjs', [
+        const hrResult = await runScriptStep('high_retention_pipeline.mjs', [
             '--project-id', projectId,
-            '--fps', fps,
-            '--source-ref', sourceRef,
-            '--fetch-external', fetchExternal,
+            '--project-dir', projectDir,
             '--llm-provider', llmProvider,
             ...(llmModel ? ['--llm-model', llmModel] : []),
-        ]);
+        ], 20 * 60 * 1000); // 20 min timeout for full video analysis
+
+        results.highRetention = {
+            totalChunks: hrResult.stats?.totalChunks ?? 0,
+            keptChunks: hrResult.stats?.keptChunks ?? 0,
+            cutChunks: hrResult.stats?.cutChunks ?? 0,
+            templates: hrResult.stats?.withTemplate ?? 0,
+            images: hrResult.stats?.withImage ?? 0,
+            videos: hrResult.stats?.withVideo ?? 0,
+        };
 
         results.templates = {
-            count: editNowResult.templatePlacements?.length ?? 0,
-            placements: (editNowResult.templatePlacements || []).map(p => ({
+            count: hrResult.templatePlacements?.length ?? 0,
+            placements: (hrResult.templatePlacements || []).map(p => ({
                 id: p.id,
                 template: p.templateName,
                 headline: p.content?.headline,
-                reason: p.aiReason || 'heuristic',
+                reason: p.aiReason || 'chunk-ai',
             })),
         };
 
         results.stockMedia = {
-            count: editNowResult.assetSuggestions?.length ?? 0,
-            suggestions: (editNowResult.assetSuggestions || []).map(a => ({
+            count: hrResult.assetSuggestions?.length ?? 0,
+            suggestions: (hrResult.assetSuggestions || []).map(a => ({
                 id: a.id,
                 query: a.query,
                 kind: a.kind,
                 provider: a.provider,
-                reason: a.aiReason || 'heuristic',
+                reason: a.aiReason || 'chunk-ai',
             })),
         };
 
-        currentStepIndex = 4;
-        await updateProgress('asset_resolution', 'done',
+        await updateProgress('high_retention_analysis', 'done',
+            `${results.highRetention.keptChunks} chunks kept, ${results.highRetention.cutChunks} cut, ` +
             `${results.templates.count} templates, ${results.stockMedia.count} assets`
         );
 
-        // ── Step 5: Timeline Assembly ─────────────────────────────────────────
-        currentStepIndex = 5;
-        await updateProgress('timeline_assembly', 'done', 'Timeline enriched with AI edits');
+        // ── Step 3: Timeline Assembly ─────────────────────────────────────────
+        currentStepIndex = 2;
+        await updateProgress('timeline_assembly', 'done', 'Timeline enriched with high-retention AI edits');
 
         // ── Final Summary ─────────────────────────────────────────────────────
         const summary = {
@@ -243,7 +251,10 @@ async function main() {
             steps: results,
             aiDecisions: {
                 transcriptionAdapter: results.transcription?.adapter || 'unknown',
-                cutsApplied: results.transcription?.removeRanges || 0,
+                cutsApplied: (results.transcription?.removeRanges || 0) + (results.highRetention?.cutChunks || 0),
+                chunksAnalysed: results.highRetention?.totalChunks || 0,
+                chunksKept: results.highRetention?.keptChunks || 0,
+                chunksCut: results.highRetention?.cutChunks || 0,
                 templatesSelected: results.templates?.count || 0,
                 stockMediaSuggested: results.stockMedia?.count || 0,
                 templateDetails: results.templates?.placements || [],

@@ -1,0 +1,413 @@
+#!/usr/bin/env node
+
+/**
+ * High-Retention Editing Pipeline
+ *
+ * Splits the transcript into topic chunks (2-3 sentences, ~5-7s each).
+ * For each chunk, AI (with 2-3 min context window) decides:
+ *   - Template to show (title card, stat, quote, etc.)
+ *   - Stock image search query
+ *   - Stock video search query
+ *   - Whether to CUT this chunk (repetition / filler)
+ *
+ * Guarantees something happens every 5-7 seconds in the output.
+ * Chunks are processed in parallel (Metal-optimised on Apple Silicon).
+ *
+ * Output: high-retention-plan.json
+ */
+
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
+import { parallelMap } from './lib/metal_accel.mjs';
+
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+function readArg(flag, fallback = '') {
+    const idx = process.argv.indexOf(flag);
+    if (idx === -1) return fallback;
+    return process.argv[idx + 1] ?? fallback;
+}
+
+async function writeJson(filePath, data) {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+}
+
+// ── Topic Chunker ─────────────────────────────────────────────────────────────
+// Groups transcript segments into topic chunks of 2-3 sentences (~5-7 seconds).
+// A new chunk starts when:
+//   - We have ≥2 sentences AND duration ≥5s, OR
+//   - We have ≥3 sentences, OR
+//   - There's a long pause (>1.5s gap between segments)
+
+const TARGET_CHUNK_MIN_US = 5_000_000;   // 5 seconds minimum
+const TARGET_CHUNK_MAX_US = 10_000_000;  // 10 seconds maximum
+const LONG_PAUSE_US       = 1_500_000;   // 1.5s gap = topic break
+const MAX_SENTENCES       = 3;
+
+function splitIntoTopicChunks(segments) {
+    if (!segments || segments.length === 0) return [];
+
+    const chunks = [];
+    let current = [];
+
+    for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const next = segments[i + 1];
+        current.push(seg);
+
+        const chunkDuration = current[current.length - 1].endUs - current[0].startUs;
+        const gapToNext = next ? next.startUs - seg.endUs : Infinity;
+        const sentenceCount = current.length;
+
+        const shouldBreak =
+            (sentenceCount >= 2 && chunkDuration >= TARGET_CHUNK_MIN_US) ||
+            sentenceCount >= MAX_SENTENCES ||
+            gapToNext > LONG_PAUSE_US ||
+            chunkDuration >= TARGET_CHUNK_MAX_US ||
+            !next;
+
+        if (shouldBreak) {
+            chunks.push({
+                index: chunks.length,
+                startUs: current[0].startUs,
+                endUs: current[current.length - 1].endUs,
+                segments: current,
+                text: current.map(s => s.text).join(' '),
+            });
+            current = [];
+        }
+    }
+
+    return chunks;
+}
+
+// ── Context Window Builder ────────────────────────────────────────────────────
+// Returns ±2 minutes of surrounding transcript text for AI context.
+
+const CONTEXT_WINDOW_US = 2 * 60 * 1_000_000; // 2 minutes each side
+
+function buildContextWindow(allSegments, chunkStartUs, chunkEndUs) {
+    const windowStart = chunkStartUs - CONTEXT_WINDOW_US;
+    const windowEnd   = chunkEndUs   + CONTEXT_WINDOW_US;
+    return allSegments
+        .filter(s => s.endUs >= windowStart && s.startUs <= windowEnd)
+        .map(s => s.text)
+        .join(' ');
+}
+
+// ── Per-Chunk AI Analysis ─────────────────────────────────────────────────────
+
+async function analyseChunkWithAI(chunk, allSegments, catalog, llmConfig, chunkTotal) {
+    const contextText = buildContextWindow(allSegments, chunk.startUs, chunk.endUs);
+    const durationSec = Math.round((chunk.endUs - chunk.startUs) / 1_000_000);
+
+    // Pick 6 most relevant templates to keep prompt small
+    const templateOptions = catalog.slice(0, 6).map(t => ({
+        id: t.id, name: t.name, category: t.category,
+    }));
+
+    const prompt = `You are an expert video editor creating HIGH-RETENTION content for Indian YouTube audiences.
+
+CURRENT CHUNK (${durationSec}s, chunk ${chunk.index + 1}/${chunkTotal}):
+"${chunk.text}"
+
+SURROUNDING CONTEXT (±2 min):
+"${contextText.slice(0, 600)}"
+
+AVAILABLE TEMPLATES:
+${JSON.stringify(templateOptions, null, 1)}
+
+TASK: Analyse this chunk and output a JSON decision. Be aggressive with cuts — remove anything repeated or filler.
+
+Output ONLY raw JSON:
+{
+  "cut": false,
+  "cutReason": "repetition|filler|tangent|off-topic|null",
+  "template": {
+    "templateId": "${templateOptions[0]?.id || ''}",
+    "headline": "catchy 5-7 word Hindi/English headline from this chunk",
+    "subline": "brief supporting stat or context (max 40 chars)"
+  },
+  "imageQuery": "descriptive English query for stock photo matching this topic",
+  "videoQuery": "descriptive English query for B-roll video matching this topic",
+  "overlayText": "key stat or quote to show on screen (max 8 words)"
+}`;
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const response = await runLLMPrompt(llmConfig, prompt, 120_000);
+            const result = extractJsonFromLLMOutput(response);
+
+            // Validate and normalise
+            return {
+                chunkIndex: chunk.index,
+                startUs: chunk.startUs,
+                endUs: chunk.endUs,
+                durationSec,
+                text: chunk.text,
+                cut: Boolean(result.cut),
+                cutReason: result.cutReason || null,
+                template: result.template || null,
+                imageQuery: result.imageQuery || null,
+                videoQuery: result.videoQuery || null,
+                overlayText: result.overlayText || null,
+                aiSource: `${llmConfig.provider}/${llmConfig.model}`,
+            };
+        } catch (e) {
+            console.error(`[HR] Chunk ${chunk.index} attempt ${attempt} failed: ${e.message}`);
+            if (attempt === 2) {
+                // Heuristic fallback — keep chunk, assign first template
+                return {
+                    chunkIndex: chunk.index,
+                    startUs: chunk.startUs,
+                    endUs: chunk.endUs,
+                    durationSec,
+                    text: chunk.text,
+                    cut: false,
+                    cutReason: null,
+                    template: catalog.length > 0 ? {
+                        templateId: catalog[chunk.index % catalog.length].id,
+                        headline: chunk.text.split(' ').slice(0, 6).join(' '),
+                        subline: '',
+                    } : null,
+                    imageQuery: chunk.text.split(' ').slice(0, 5).join(' '),
+                    videoQuery: null,
+                    overlayText: null,
+                    aiSource: 'heuristic',
+                };
+            }
+        }
+    }
+}
+
+// ── Density Enforcer ──────────────────────────────────────────────────────────
+// Ensures something (template OR asset) happens every 5-7 seconds.
+// If a gap > 7s has no overlay, inserts a simple text overlay from the transcript.
+
+const MAX_GAP_US = 7_000_000; // 7 seconds
+
+function enforceDensity(decisions, catalog) {
+    const kept = decisions.filter(d => !d.cut);
+    if (kept.length === 0) return decisions;
+
+    const result = [...decisions];
+    let lastOverlayEndUs = kept[0].startUs;
+
+    for (const d of kept) {
+        if (d.cut) continue;
+        const gap = d.startUs - lastOverlayEndUs;
+
+        if (gap > MAX_GAP_US && !d.template && !d.imageQuery) {
+            // Force a simple overlay on this chunk
+            const tmpl = catalog[d.chunkIndex % catalog.length];
+            d.template = {
+                templateId: tmpl?.id || '',
+                headline: d.text.split(' ').slice(0, 6).join(' '),
+                subline: '',
+            };
+            d.overlayText = d.text.split(' ').slice(0, 8).join(' ');
+            d.densityForced = true;
+        }
+
+        if (d.template || d.imageQuery || d.videoQuery) {
+            lastOverlayEndUs = d.endUs;
+        }
+    }
+
+    return result;
+}
+
+// ── Template Catalog Discovery ────────────────────────────────────────────────
+
+async function discoverTemplateCatalog() {
+    const templateDirs = [
+        path.join(ROOT_DIR, 'public', 'templates'),
+        path.join(ROOT_DIR, 'src', 'assets', 'templates'),
+        path.join(ROOT_DIR, 'desktop', 'templates'),
+    ];
+
+    const catalog = [];
+    for (const dir of templateDirs) {
+        try {
+            const entries = await fs.readdir(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                const metaPath = path.join(dir, entry.name, 'meta.json');
+                try {
+                    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+                    catalog.push({
+                        id: meta.id || entry.name,
+                        name: meta.name || entry.name,
+                        category: meta.category || 'general',
+                        path: path.join(dir, entry.name),
+                    });
+                } catch {
+                    catalog.push({
+                        id: entry.name,
+                        name: entry.name,
+                        category: 'general',
+                        path: path.join(dir, entry.name),
+                    });
+                }
+            }
+        } catch { /* dir doesn't exist */ }
+    }
+
+    // Fallback built-in catalog if no templates found on disk
+    if (catalog.length === 0) {
+        return [
+            { id: 'breaking-news', name: 'Breaking Business News', category: 'news' },
+            { id: 'earnings-report', name: 'Earnings Report', category: 'finance' },
+            { id: 'ai-ml-update', name: 'AI / ML Update', category: 'tech' },
+            { id: 'money-rain', name: 'Money Rain Number Impact', category: 'finance' },
+            { id: 'ma-alert', name: 'M&A / Merger Alert', category: 'business' },
+            { id: 'quote-card', name: 'Quote Card', category: 'quote' },
+            { id: 'stat-reveal', name: 'Stat Reveal', category: 'stat' },
+            { id: 'key-point', name: 'Key Point', category: 'highlight' },
+        ];
+    }
+
+    return catalog;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+async function main() {
+    const projectId = readArg('--project-id');
+    if (!projectId) throw new Error('Missing --project-id');
+
+    const projectDir = readArg('--project-dir') || path.resolve(ROOT_DIR, 'desktop', 'data', projectId);
+    const transcriptPath = path.join(projectDir, 'transcript.json');
+    const outputPath = path.join(projectDir, 'high-retention-plan.json');
+
+    // Auto-detect best LLM
+    const autoLLM = await detectBestLLM();
+    const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || autoLLM.provider);
+    const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || autoLLM.model);
+    const llmConfig = { provider: llmProvider, model: llmModel };
+
+    console.error(`[HR] High-retention pipeline starting (${llmProvider}/${llmModel})`);
+
+    // 1. Load transcript
+    const transcript = JSON.parse(await fs.readFile(transcriptPath, 'utf8'));
+    const segments = transcript.segments || [];
+    const durationUs = segments.length > 0
+        ? segments[segments.length - 1].endUs
+        : 0;
+
+    console.error(`[HR] Transcript: ${segments.length} segments, ${Math.round(durationUs / 1_000_000)}s`);
+
+    // 2. Discover template catalog
+    const catalog = await discoverTemplateCatalog();
+    console.error(`[HR] Template catalog: ${catalog.length} templates`);
+
+    // 3. Split into topic chunks
+    const chunks = splitIntoTopicChunks(segments);
+    console.error(`[HR] Split into ${chunks.length} topic chunks (avg ${Math.round(durationUs / 1_000_000 / chunks.length)}s each)`);
+
+    // 4. Analyse each chunk with AI in parallel (concurrency=4 — API rate limit safe)
+    console.error(`[HR] Analysing chunks with AI (parallel, concurrency=4)...`);
+    const rawDecisions = await parallelMap(chunks, async (chunk) => {
+        console.error(`[HR] Chunk ${chunk.index + 1}/${chunks.length}: "${chunk.text.slice(0, 60)}..."`);
+        return analyseChunkWithAI(chunk, segments, catalog, llmConfig, chunks.length);
+    }, 4);
+
+    // 5. Enforce density — something every 5-7 seconds
+    const decisions = enforceDensity(rawDecisions, catalog);
+
+    // 6. Build summary stats
+    const kept = decisions.filter(d => !d.cut);
+    const cut  = decisions.filter(d => d.cut);
+    const withTemplate = kept.filter(d => d.template);
+    const withImage    = kept.filter(d => d.imageQuery);
+    const withVideo    = kept.filter(d => d.videoQuery);
+    const densityForced = kept.filter(d => d.densityForced);
+
+    // 7. Build cut ranges for timeline
+    const removeRanges = cut.map(d => ({
+        startUs: d.startUs,
+        endUs: d.endUs,
+        reason: d.cutReason || 'ai-decision',
+        confidence: 0.85,
+    }));
+
+    // 8. Build template placements
+    const templatePlacements = withTemplate.map((d, i) => {
+        const tmpl = catalog.find(t => t.id === d.template?.templateId) || catalog[i % catalog.length];
+        return {
+            id: `hr-tpl-${d.chunkIndex}`,
+            templateId: tmpl.id,
+            templateName: tmpl.name,
+            category: tmpl.category,
+            startUs: d.startUs,
+            endUs: Math.min(d.endUs, d.startUs + 3_000_000), // show for max 3s
+            content: {
+                headline: d.template?.headline || d.text.split(' ').slice(0, 6).join(' '),
+                subline: d.template?.subline || '',
+            },
+            overlayText: d.overlayText || null,
+            aiReason: `chunk-${d.chunkIndex}`,
+        };
+    });
+
+    // 9. Build asset suggestions
+    const assetSuggestions = [];
+    for (const d of kept) {
+        if (d.imageQuery) {
+            assetSuggestions.push({
+                id: `hr-img-${d.chunkIndex}`,
+                kind: 'image',
+                query: d.imageQuery,
+                startUs: d.startUs,
+                endUs: d.endUs,
+                provider: 'pexels',
+                aiReason: `chunk-${d.chunkIndex}`,
+            });
+        }
+        if (d.videoQuery) {
+            assetSuggestions.push({
+                id: `hr-vid-${d.chunkIndex}`,
+                kind: 'video',
+                query: d.videoQuery,
+                startUs: d.startUs,
+                endUs: d.endUs,
+                provider: 'pixabay',
+                aiReason: `chunk-${d.chunkIndex}`,
+            });
+        }
+    }
+
+    const plan = {
+        ok: true,
+        projectId,
+        createdAt: new Date().toISOString(),
+        llm: `${llmProvider}/${llmModel}`,
+        stats: {
+            totalChunks: chunks.length,
+            keptChunks: kept.length,
+            cutChunks: cut.length,
+            withTemplate: withTemplate.length,
+            withImage: withImage.length,
+            withVideo: withVideo.length,
+            densityForced: densityForced.length,
+            avgChunkDurationSec: Math.round(durationUs / 1_000_000 / chunks.length),
+        },
+        removeRanges,
+        templatePlacements,
+        assetSuggestions,
+        decisions,
+    };
+
+    await writeJson(outputPath, plan);
+
+    console.error(`[HR] Done: ${kept.length} kept, ${cut.length} cut, ${withTemplate.length} templates, ${withImage.length} images, ${withVideo.length} videos`);
+    process.stdout.write(JSON.stringify(plan, null, 2));
+}
+
+main().catch(e => {
+    console.error('[HR] Fatal:', e.message);
+    process.exitCode = 1;
+});
