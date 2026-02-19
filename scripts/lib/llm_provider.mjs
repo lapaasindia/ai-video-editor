@@ -214,7 +214,7 @@ async function runCodex(model, prompt, timeoutMs) {
             // Only fall back on model-unavailable errors, not on logic/timeout errors
             const isModelError = msg.includes('model') || msg.includes('not found') ||
                 msg.includes('unavailable') || msg.includes('does not exist') ||
-                msg.includes('invalid model') || msg.includes('timed out');
+                msg.includes('invalid model');
             if (!isModelError) throw e; // Hard error — don't retry
             console.error(`[Codex] ${m} failed: ${msg.slice(0, 120)} — trying next model...`);
         }
