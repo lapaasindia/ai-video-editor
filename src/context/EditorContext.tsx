@@ -1094,26 +1094,31 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 assetCount: aiDecisions.stockMediaSuggested || 0,
             });
 
-            // ── Wire template placements into the timeline ──────────────────
+            // ── Wire high-retention plan into the timeline ──────────────────
             const templatePlacements: Array<{
                 id: string; templateName?: string; startUs?: number; endUs?: number;
                 content?: { headline?: string; subline?: string };
             }> = aiDecisions.templateDetails || [];
 
-            if (templatePlacements.length > 0) {
-                setTracks(prev => {
-                    // Find or create an overlay track
-                    const overlayTrackId = 'track-overlay-ai';
-                    const hasOverlay = prev.some(t => t.id === overlayTrackId);
-                    const overlayTrack = hasOverlay
-                        ? prev.find(t => t.id === overlayTrackId)!
-                        : { id: overlayTrackId, name: 'AI Templates', type: 'overlay' as const, clips: [], muted: false, locked: false };
+            const stockMedia: Array<{
+                id: string; kind?: string; query?: string;
+                startUs?: number; endUs?: number; provider?: string;
+            }> = aiDecisions.stockMediaDetails || [];
 
-                    const newClips = templatePlacements.map((p, i) => ({
-                        id: `ai-template-${Date.now()}-${i}`,
+            const chunksAnalysed = aiDecisions.chunksAnalysed || 0;
+            const chunksCut      = aiDecisions.chunksCut || 0;
+
+            setTracks(prev => {
+                let next = [...prev];
+
+                // ── Track 1: AI Templates (overlay) ──────────────────────────
+                if (templatePlacements.length > 0) {
+                    const overlayTrackId = 'track-overlay-ai';
+                    const templateClips = templatePlacements.map((p, i) => ({
+                        id: `ai-tpl-${Date.now()}-${i}`,
                         mediaId: p.id || `template-${i}`,
                         trackId: overlayTrackId,
-                        start: (p.startUs ?? i * 10_000_000) / 1_000_000,
+                        start: (p.startUs ?? i * 7_000_000) / 1_000_000,
                         duration: ((p.endUs ?? 0) - (p.startUs ?? 0)) / 1_000_000 || 3,
                         offset: 0,
                         type: 'overlay' as const,
@@ -1124,27 +1129,76 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         },
                     }));
 
+                    const hasOverlay = next.some(t => t.id === overlayTrackId);
                     if (hasOverlay) {
-                        return prev.map(t => t.id === overlayTrackId
-                            ? { ...t, clips: [...t.clips, ...newClips] }
+                        next = next.map(t => t.id === overlayTrackId
+                            ? { ...t, clips: [...t.clips, ...templateClips] }
                             : t
                         );
+                    } else {
+                        next = [...next, {
+                            id: overlayTrackId,
+                            name: `AI Templates (${templatePlacements.length})`,
+                            type: 'overlay' as const,
+                            clips: templateClips,
+                            muted: false,
+                            locked: false,
+                        }];
                     }
-                    return [...prev, { ...overlayTrack, clips: newClips }];
-                });
-                logger.log(`Placed ${templatePlacements.length} AI template clips on overlay track`);
-            }
+                }
+
+                // ── Track 2: B-Roll / Stock Media ─────────────────────────────
+                if (stockMedia.length > 0) {
+                    const assetTrackId = 'track-broll-ai';
+                    const assetClips = stockMedia.map((a, i) => ({
+                        id: `ai-broll-${Date.now()}-${i}`,
+                        mediaId: a.id || `asset-${i}`,
+                        trackId: assetTrackId,
+                        start: (a.startUs ?? i * 7_000_000) / 1_000_000,
+                        duration: ((a.endUs ?? 0) - (a.startUs ?? 0)) / 1_000_000 || 5,
+                        offset: 0,
+                        type: 'broll' as const,
+                        name: a.query || `${a.kind || 'media'} ${i + 1}`,
+                        assetData: {
+                            kind: a.kind || 'image',
+                            query: a.query || '',
+                            provider: a.provider || 'pexels',
+                        },
+                    }));
+
+                    const hasBroll = next.some(t => t.id === assetTrackId);
+                    if (hasBroll) {
+                        next = next.map(t => t.id === assetTrackId
+                            ? { ...t, clips: [...t.clips, ...assetClips] }
+                            : t
+                        );
+                    } else {
+                        next = [...next, {
+                            id: assetTrackId,
+                            name: `B-Roll / Stock (${stockMedia.length})`,
+                            type: 'broll' as const,
+                            clips: assetClips,
+                            muted: false,
+                            locked: false,
+                        }];
+                    }
+                }
+
+                return next;
+            });
+
+            logger.log(`High-retention: ${chunksAnalysed} chunks, ${chunksCut} cut, ${templatePlacements.length} templates, ${stockMedia.length} B-roll`);
 
             setAgenticProgress({
                 currentStep: 'complete',
                 percent: 100,
                 status: 'done',
-                detail: `${aiDecisions.cutsApplied || 0} cuts, ${aiDecisions.templatesSelected || 0} templates, ${aiDecisions.stockMediaSuggested || 0} stock media`,
+                detail: `${chunksCut} cuts · ${templatePlacements.length} templates · ${stockMedia.length} B-roll (every 5-7s)`,
             });
 
             setPipelineStage('enrichment_ready');
             setStatusWrapper('ready',
-                `AI Edit complete — ${aiDecisions.cutsApplied || 0} cuts, ${aiDecisions.templatesSelected || 0} templates, ${aiDecisions.stockMediaSuggested || 0} assets`
+                `High-retention edit ready — ${chunksCut} cuts, ${templatePlacements.length} templates, ${stockMedia.length} B-roll assets`
             );
 
         } catch (err: any) {
