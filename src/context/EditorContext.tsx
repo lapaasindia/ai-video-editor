@@ -1094,6 +1094,47 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 assetCount: aiDecisions.stockMediaSuggested || 0,
             });
 
+            // ── Wire template placements into the timeline ──────────────────
+            const templatePlacements: Array<{
+                id: string; templateName?: string; startUs?: number; endUs?: number;
+                content?: { headline?: string; subline?: string };
+            }> = aiDecisions.templateDetails || [];
+
+            if (templatePlacements.length > 0) {
+                setTracks(prev => {
+                    // Find or create an overlay track
+                    const overlayTrackId = 'track-overlay-ai';
+                    const hasOverlay = prev.some(t => t.id === overlayTrackId);
+                    const overlayTrack = hasOverlay
+                        ? prev.find(t => t.id === overlayTrackId)!
+                        : { id: overlayTrackId, name: 'AI Templates', type: 'overlay' as const, clips: [], muted: false, locked: false };
+
+                    const newClips = templatePlacements.map((p, i) => ({
+                        id: `ai-template-${Date.now()}-${i}`,
+                        mediaId: p.id || `template-${i}`,
+                        trackId: overlayTrackId,
+                        start: (p.startUs ?? i * 10_000_000) / 1_000_000,
+                        duration: ((p.endUs ?? 0) - (p.startUs ?? 0)) / 1_000_000 || 3,
+                        offset: 0,
+                        type: 'overlay' as const,
+                        name: p.templateName || p.id || 'AI Template',
+                        templateData: {
+                            headline: p.content?.headline || '',
+                            subline: p.content?.subline || '',
+                        },
+                    }));
+
+                    if (hasOverlay) {
+                        return prev.map(t => t.id === overlayTrackId
+                            ? { ...t, clips: [...t.clips, ...newClips] }
+                            : t
+                        );
+                    }
+                    return [...prev, { ...overlayTrack, clips: newClips }];
+                });
+                logger.log(`Placed ${templatePlacements.length} AI template clips on overlay track`);
+            }
+
             setAgenticProgress({
                 currentStep: 'complete',
                 percent: 100,
