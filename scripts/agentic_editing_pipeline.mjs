@@ -157,10 +157,10 @@ async function main() {
         if (transcriptExists) {
             console.error('[Agent] Transcript already exists — skipping transcription step');
             const existing = JSON.parse(await fs.readFile(transcriptPath, 'utf8'));
-            // Real transcript has many words; mock has ≤6 words or starts with "Mock"
-            const wordCount = existing.words?.length ?? 0;
-            const firstWord = existing.words?.[0]?.text ?? '';
-            const isMock = wordCount <= 6 || firstWord === 'Mock';
+            // Stub transcripts always have ':stub' in adapter.engine (e.g. 'api:sarvam:stub')
+            // Secondary guard: first word literally 'Mock' (legacy synthetic transcripts)
+            const engine = existing.adapter?.engine ?? '';
+            const isMock = engine.includes('stub') || existing.words?.[0]?.text === 'Mock';
             if (isMock) {
                 console.error('[Agent] Existing transcript is mock — running real transcription with Sarvam');
                 await updateProgress('transcription', 'running', 'Transcribing with Sarvam AI...');
