@@ -852,32 +852,34 @@ function clampRanges(ranges, durationUs) {
 
 async function generateCutPlanWithOllama(transcriptPayload, llmConfig) {
   const segments = (transcriptPayload.segments || []);
-  const simplifiedTranscript = segments.map(s => ({
+  // Limit to 25 segments max to keep prompt size manageable for any LLM
+  const trimmed = segments.slice(0, 25);
+  const simplifiedTranscript = trimmed.map(s => ({
     startUs: s.startUs,
     endUs: s.endUs,
-    text: s.text
+    text: (s.text || '').slice(0, 150), // cap each segment text
   }));
 
-  const prompt = `You are an expert video editor AI. Analyze this transcript deeply.
+  const prompt = `You are an expert video editor AI. Analyze this Hindi/Hinglish transcript.
 
-Transcript segments:
+Transcript segments (${simplifiedTranscript.length} of ${segments.length} total):
 ${JSON.stringify(simplifiedTranscript, null, 1)}
 
-Your tasks:
-1. Identify sections to CUT (remove) - filler words, long pauses, repetitions, off-topic tangents
-2. Label each remaining section with a type: intro, key-point, example, transition, conclusion, tangent
-3. Suggest overlay text for the 3-5 most important moments
+Tasks:
+1. Identify sections to CUT - repetitions, tangents, filler phrases
+2. Label each section: intro, key-point, example, transition, conclusion
+3. Suggest overlay text for 3-5 most important moments
 
-Respond ONLY with this JSON (no markdown, no explanation):
+Output ONLY raw JSON, no prose, no markdown:
 {
   "removeRanges": [
-    { "startUs": 0, "endUs": 0, "reason": "filler-word|silence|repetition|tangent", "confidence": 0.9 }
+    { "startUs": 0, "endUs": 0, "reason": "repetition|tangent|filler", "confidence": 0.9 }
   ],
   "sections": [
-    { "startUs": 0, "endUs": 0, "type": "intro|key-point|example|transition|conclusion", "summary": "brief description" }
+    { "startUs": 0, "endUs": 0, "type": "intro|key-point|example|transition|conclusion", "summary": "brief" }
   ],
   "overlayTexts": [
-    { "startUs": 0, "endUs": 0, "text": "Key point text to show on screen" }
+    { "startUs": 0, "endUs": 0, "text": "Key insight to show on screen" }
   ]
 }`;
 
@@ -886,7 +888,7 @@ Respond ONLY with this JSON (no markdown, no explanation):
   // Retry up to 2 times if JSON parsing fails
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const response = await runLLMPrompt(llmConfig, prompt, 180000);
+      const response = await runLLMPrompt(llmConfig, prompt, 300000); // 5 min timeout for gpt-5.2
       const result = extractJsonFromLLMOutput(response);
 
       // Ensure required fields exist
