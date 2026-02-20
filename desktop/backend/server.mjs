@@ -1349,12 +1349,19 @@ const server = http.createServer(async (req, res) => {
     // ── Native folder picker (macOS) ─────────────────────────────────────────
     if (method === 'POST' && route === '/dialog/folder') {
       try {
-        const script = `tell application "Finder"\nactivate\nset theFolder to choose folder with prompt "Choose Project Folder"\nPOSIX path of theFolder\nend tell`;
-        const { stdout } = await execFile('osascript', ['-e', script], { timeout: 60_000 });
+        // Use multiple -e flags — each line as a separate argument (most reliable on macOS)
+        const { stdout } = await execFile('osascript', [
+          '-e', 'tell application "System Events"',
+          '-e', 'activate',
+          '-e', 'set theFolder to choose folder with prompt "Choose Project Folder"',
+          '-e', 'POSIX path of theFolder',
+          '-e', 'end tell',
+        ], { timeout: 60_000 });
         const folderPath = stdout.trim();
+        if (!folderPath) throw new Error('empty path');
         sendJson(res, 200, { ok: true, path: folderPath });
       } catch (e) {
-        // User cancelled or osascript unavailable
+        // User cancelled (exit code 1) or osascript unavailable
         sendJson(res, 200, { ok: false, cancelled: true });
       }
       return;
