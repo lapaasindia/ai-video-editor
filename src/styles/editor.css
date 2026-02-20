@@ -586,6 +586,74 @@ body {
   clip-path: polygon(50% 100%, 0 0, 100% 0);
 }
 
+/* ── action-button (menu bar toolbar buttons) ─────────────────────────── */
+.action-button {
+  border: none;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.action-button.primary {
+  background: linear-gradient(135deg, var(--accent-primary), #36d973);
+  color: #000;
+  box-shadow: 0 2px 8px rgba(74, 222, 128, 0.25);
+}
+
+.action-button.primary:hover {
+  background: linear-gradient(135deg, var(--accent-hover), #4ade80);
+  box-shadow: 0 4px 14px rgba(74, 222, 128, 0.35);
+  transform: translateY(-1px);
+}
+
+.action-button.secondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--panel-border);
+}
+
+.action-button.secondary:hover {
+  background: var(--bg-tertiary);
+  border-color: rgba(74, 222, 128, 0.4);
+  color: var(--accent-primary);
+}
+
+.action-button:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* ── tab-btn (ProjectPanel Project / Templates tabs) ──────────────────── */
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 5px 13px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  background: var(--bg-elevated);
+  color: var(--accent-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
 /* Buttons */
 .icon-btn,
 .icon-btn-small {
