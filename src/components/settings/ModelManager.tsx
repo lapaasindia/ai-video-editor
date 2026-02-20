@@ -25,11 +25,13 @@ interface Provider {
 
 const BACKEND = 'http://127.0.0.1:43123';
 
-const API_KEY_MAP: Record<string, { label: string; placeholder: string; envKey: string }> = {
+const API_KEY_MAP: Record<string, { label: string; placeholder: string; envKey: string; hint?: string }> = {
     sarvam: { label: 'Sarvam AI', placeholder: 'sk_...', envKey: 'SARVAM_API_KEY' },
     openai: { label: 'OpenAI', placeholder: 'sk-...', envKey: 'OPENAI_API_KEY' },
     google: { label: 'Google Gemini', placeholder: 'AIza...', envKey: 'GOOGLE_API_KEY' },
     anthropic: { label: 'Anthropic', placeholder: 'sk-ant-...', envKey: 'ANTHROPIC_API_KEY' },
+    pexels: { label: 'Pexels (Stock Photos & Videos)', placeholder: 'Paste Pexels API key...', envKey: 'PEXELS_API_KEY', hint: 'Free at pexels.com/api' },
+    pixabay: { label: 'Pixabay (Stock Photos & Videos)', placeholder: 'Paste Pixabay API key...', envKey: 'PIXABAY_API_KEY', hint: 'Free at pixabay.com/api/docs' },
 };
 
 
@@ -356,6 +358,11 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ onClose }) => {
                                                 {saving ? '...' : 'Save'}
                                             </button>
                                         </div>
+                                        {info.hint && (
+                                            <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
+                                                💡 {info.hint}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
