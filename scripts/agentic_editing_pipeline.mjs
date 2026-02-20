@@ -216,8 +216,11 @@ async function main() {
             count: hrResult.templatePlacements?.length ?? 0,
             placements: (hrResult.templatePlacements || []).map(p => ({
                 id: p.id,
-                template: p.templateName,
-                headline: p.content?.headline,
+                templateName: p.templateName,
+                templateId: p.templateId || p.id,
+                startUs: p.startUs,
+                endUs: p.endUs,
+                content: p.content,
                 reason: p.aiReason || 'chunk-ai',
             })),
         };
@@ -228,7 +231,10 @@ async function main() {
                 id: a.id,
                 query: a.query,
                 kind: a.kind,
+                startUs: a.startUs,
+                endUs: a.endUs,
                 provider: a.provider,
+                localPath: a.localPath,
                 reason: a.aiReason || 'chunk-ai',
             })),
         };

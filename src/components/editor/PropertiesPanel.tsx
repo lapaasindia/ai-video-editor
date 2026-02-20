@@ -133,7 +133,7 @@ const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ labe
 };
 
 const StageIdle: React.FC = () => {
-    const { media, startEditing, currentProject } = useEditor();
+    const { media, agenticEdit, currentProject } = useEditor();
     const videoItem = media.find(m => m.status === 'ok' && m.type.toLowerCase() === 'video');
     const canStart = !!currentProject && !!videoItem;
 
@@ -158,12 +158,12 @@ const StageIdle: React.FC = () => {
             </div>
 
             <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                AI will transcribe your video, detect silences and filler words, and generate a rough cut timeline automatically.
+                AI will transcribe, cut silences, add templates and stock B-roll, and generate a fully edited timeline automatically.
             </div>
 
             <button
                 className="btn-primary btn-block"
-                onClick={startEditing}
+                onClick={agenticEdit}
                 disabled={!canStart}
                 style={{ opacity: canStart ? 1 : 0.4, cursor: canStart ? 'pointer' : 'not-allowed' }}
             >

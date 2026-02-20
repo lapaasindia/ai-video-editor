@@ -977,7 +977,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     projectId: currentProject.id,
                     fps: currentProject.fps || 30,
                     sourceRef: 'source-video',
-                    fetchExternal: false,
+                    fetchExternal: true,
                 })
             });
 
@@ -1000,11 +1000,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Add enrichment clips to overlay track
             if (templatePlacements.length > 0) {
                 setTracks(prev => prev.map(track => {
-                    if (track.id === 'track-3') {
+                    if (track.id === 'track-overlays') {
                         const enrichCLips = templatePlacements.map((p: any, idx: number) => ({
                             id: `enrich-${idx}`,
                             mediaId: '',
-                            trackId: 'track-3',
+                            trackId: 'track-overlays',
                             start: Number(p.startUs || 0) / 1_000_000,
                             duration: Number((p.endUs || 0) - (p.startUs || 0)) / 1_000_000,
                             offset: 0,
@@ -1163,12 +1163,14 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         start: (a.startUs ?? i * 7_000_000) / 1_000_000,
                         duration: ((a.endUs ?? 0) - (a.startUs ?? 0)) / 1_000_000 || 5,
                         offset: 0,
-                        type: 'image' as const,
+                        type: (a.kind === 'video' ? 'video' : 'image') as const,
                         name: a.query || `${a.kind || 'media'} ${i + 1}`,
+                        sourceRef: a.localPath || undefined,
                         assetData: {
                             kind: a.kind || 'image',
                             query: a.query || '',
                             provider: a.provider || 'pexels',
+                            localPath: a.localPath || '',
                         },
                     }));
 
