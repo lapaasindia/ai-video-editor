@@ -29,6 +29,9 @@
       "app",
       "dmg"
     ],
+    "externalBin": [
+      "binaries/node"
+    ],
     "macOS": {
       "signingIdentity": null,
       "entitlements": null

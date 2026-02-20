@@ -14,7 +14,29 @@ fn workspace_root() -> Result<PathBuf, String> {
 }
 
 fn node_binary() -> String {
-    std::env::var("NODE_BIN").unwrap_or_else(|_| "node".to_string())
+    // 1. Explicit override (useful for dev/CI)
+    if let Ok(v) = std::env::var("NODE_BIN") {
+        return v;
+    }
+    // 2. Bundled sidecar inside the .app (Tauri externalBin convention)
+    //    The binary is placed next to the main executable as "node"
+    if let Ok(exe) = std::env::current_exe() {
+        let sidecar = exe.parent().map(|p| p.join("node")).unwrap_or_default();
+        if sidecar.exists() {
+            return sidecar.to_string_lossy().to_string();
+        }
+        // macOS .app: Contents/MacOS/node
+        let macos_sidecar = exe
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.join("MacOS").join("node"))
+            .unwrap_or_default();
+        if macos_sidecar.exists() {
+            return macos_sidecar.to_string_lossy().to_string();
+        }
+    }
+    // 3. Fall back to system node (dev mode / user has Node installed)
+    "node".to_string()
 }
 
 fn run_node_script(script_path: &Path, args: &[String]) -> Result<String, String> {

@@ -25,6 +25,9 @@ pnpm-debug.log*
 # Rust / Tauri build artifacts
 src-tauri/target/
 
+# Bundled Node.js sidecar binary (104MB, copied at build time via scripts/bundle-node.sh)
+src-tauri/binaries/
+
 # Agent/editor metadata
 .agent/
 .agents/

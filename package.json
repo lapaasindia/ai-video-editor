@@ -69,7 +69,9 @@
     "build:app": "tsc -p tsconfig.app.json && vite build",
     "preview:app": "vite preview",
     "desktop:tauri:dev": "cd src-tauri && cargo tauri dev",
-    "desktop:tauri:build": "cargo tauri build --manifest-path src-tauri/Cargo.toml"
+    "desktop:tauri:build": "cargo tauri build --manifest-path src-tauri/Cargo.toml",
+    "bundle-node": "bash scripts/bundle-node.sh",
+    "tauri:build": "bash scripts/bundle-node.sh && npm run build:app && cargo tauri build --manifest-path src-tauri/Cargo.toml"
   },
   "sideEffects": [
     "*.css",
