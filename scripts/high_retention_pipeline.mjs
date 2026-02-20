@@ -419,41 +419,53 @@ async function main() {
         }
     }
 
-    // 10. Auto-download Pexels images if API key is available
+    // 10. Auto-download stock assets (images via Pexels, videos via Pixabay)
     const pexelsKey = process.env.PEXELS_API_KEY;
+    const pixabayKey = process.env.PIXABAY_API_KEY;
     const fetchScript = path.join(ROOT_DIR, 'scripts', 'fetch_free_assets.mjs');
-    if (pexelsKey) {
-        const imageAssets = assetSuggestions.filter(a => a.kind === 'image');
-        console.error(`[HR] Downloading ${imageAssets.length} Pexels images (concurrency=4)...`);
-        await parallelMap(imageAssets, async (asset) => {
+
+    const downloadableAssets = assetSuggestions.filter(a => {
+        if (a.kind === 'image') return !!pexelsKey;
+        if (a.kind === 'video') return !!(pixabayKey || pexelsKey);
+        return false;
+    });
+
+    if (downloadableAssets.length > 0) {
+        console.error(`[HR] Downloading ${downloadableAssets.length} assets (images→Pexels, videos→Pixabay, concurrency=4)...`);
+        await parallelMap(downloadableAssets, async (asset) => {
             try {
+                // Pick best provider per kind
+                const provider = asset.kind === 'video'
+                    ? (pixabayKey ? 'pixabay' : 'pexels')
+                    : 'pexels';
                 const { stdout } = await execFile('node', [
                     fetchScript,
                     '--project-id', projectId,
                     '--project-dir', projectDir,
                     '--query', asset.query,
-                    '--kind', 'image',
-                    '--provider', 'pexels',
+                    '--kind', asset.kind,
+                    '--provider', provider,
                 ], {
                     env: { ...process.env },
-                    timeout: 30_000,
-                    maxBuffer: 1024 * 1024,
+                    timeout: 60_000,
+                    maxBuffer: 2 * 1024 * 1024,
                 });
                 const result = JSON.parse(stdout.trim());
                 if (result.ok && result.localPath) {
                     asset.localPath = result.localPath;
                     asset.creator = result.creator;
                     asset.license = result.license;
-                    console.error(`[HR] Downloaded: ${path.basename(result.localPath)}`);
+                    asset.provider = result.provider;
+                    console.error(`[HR] ✓ ${asset.kind} (${result.provider}): ${path.basename(result.localPath)}`);
                 }
             } catch (e) {
-                console.error(`[HR] Asset download failed (${asset.query.slice(0, 40)}): ${e.message.slice(0, 80)}`);
+                console.error(`[HR] ✗ Asset download failed (${asset.query.slice(0, 40)}): ${e.message.slice(0, 80)}`);
             }
         }, 4);
         const downloaded = assetSuggestions.filter(a => a.localPath).length;
-        console.error(`[HR] Assets downloaded: ${downloaded}/${imageAssets.length}`);
+        console.error(`[HR] Assets downloaded: ${downloaded}/${downloadableAssets.length}`);
     } else {
-        console.error('[HR] PEXELS_API_KEY not set — skipping asset download (queries saved for later)');
+        console.error('[HR] No API keys set (PEXELS_API_KEY / PIXABAY_API_KEY) — skipping asset download');
     }
 
     const plan = {
