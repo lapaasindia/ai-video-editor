@@ -1543,7 +1543,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
             } catch {
                 setBackendAvailable(false);
-                connected = false;
+                if (connected) {
+                    // Backend just went down — switch back to fast polling
+                    connected = false;
+                    clearInterval(interval);
+                    interval = setInterval(checkBackend, 2000);
+                }
             }
         };
 
