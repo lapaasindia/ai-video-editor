@@ -769,7 +769,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // Create or find "AI Overlays" track
         let overlayTrackId = tracks.find(t => t.name === 'AI Overlays')?.id;
-        let newTracks = [...tracks];
+        const newTracks = [...tracks];
 
         if (!overlayTrackId) {
             overlayTrackId = `track-overlay-${Date.now()}`;
