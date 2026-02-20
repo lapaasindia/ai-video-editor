@@ -284,7 +284,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 setCurrentProject(normalizeProject(projects[projects.length - 1]));
             }
         } catch (err) {
-            logger.error('loadProjects failed', err);
+            const msg = err instanceof Error ? err.message : String(err);
+            // Network errors are expected when backend hasn't started yet — downgrade to warn
+            if (msg.includes('fetch') || msg.includes('NetworkError') || msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED')) {
+                logger.warn('loadProjects: backend not ready yet');
+            } else {
+                logger.error('loadProjects failed', msg);
+            }
         }
     }, [isTauri, invokeCommand]);
 

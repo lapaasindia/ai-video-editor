@@ -17,7 +17,7 @@ if [ -z "$NODE_BIN" ]; then
     echo "❌ node not found in PATH. Install Node.js v22+ first." >&2
     exit 1
 fi
-NODE_BIN="$(realpath "$NODE_BIN")"
+NODE_BIN="$(cd "$(dirname "$NODE_BIN")" && pwd -P)/$(basename "$NODE_BIN")"
 
 SERVER="$PROJECT_DIR/desktop/backend/server.mjs"
 if [ ! -f "$SERVER" ]; then
