@@ -57,7 +57,8 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
 
         // 2. Try backend osascript native macOS folder picker
         try {
-            const res = await fetch('http://127.0.0.1:43123/dialog/folder', { method: 'POST' });
+            const backendUrl = (window as any).__BACKEND_URL || 'http://127.0.0.1:43123';
+            const res = await fetch(`${backendUrl}/dialog/folder`, { method: 'POST' });
             const data = await res.json();
             if (data.ok && data.path) {
                 setFormData(prev => ({ ...prev, projectDir: data.path }));
