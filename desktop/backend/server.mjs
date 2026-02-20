@@ -1346,6 +1346,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ── Native folder picker (macOS) ─────────────────────────────────────────
+    if (method === 'POST' && route === '/dialog/folder') {
+      try {
+        const script = `tell application "Finder"\nactivate\nset theFolder to choose folder with prompt "Choose Project Folder"\nPOSIX path of theFolder\nend tell`;
+        const { stdout } = await execFile('osascript', ['-e', script], { timeout: 60_000 });
+        const folderPath = stdout.trim();
+        sendJson(res, 200, { ok: true, path: folderPath });
+      } catch (e) {
+        // User cancelled or osascript unavailable
+        sendJson(res, 200, { ok: false, cancelled: true });
+      }
+      return;
+    }
+
     if (method === 'POST' && route === '/media/ingest') {
       const body = await readBody(req);
       const input = typeof body.input === 'string' ? body.input : '';

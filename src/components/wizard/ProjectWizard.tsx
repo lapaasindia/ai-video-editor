@@ -8,6 +8,7 @@ interface ProjectWizardProps {
 export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
     const { createProject } = useEditor();
     const [step, setStep] = useState(1);
+    const [showPathInput, setShowPathInput] = useState(false);
     const [formData, setFormData] = useState({
         name: 'My New Project',
         projectDir: '',
@@ -40,25 +41,33 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
     };
 
     const handleBrowseFolder = async () => {
-        // Blur any active input to prevent clipboard/focus issues when dialog closes
         if (document.activeElement instanceof HTMLElement) {
             document.activeElement.blur();
         }
 
+        // 1. Try Tauri native dialog (desktop app)
         try {
-            // Try Tauri dialog first
             const { open } = await import('@tauri-apps/plugin-dialog');
             const selected = await open({ directory: true, title: 'Choose Project Folder' });
             if (selected) {
                 setFormData(prev => ({ ...prev, projectDir: selected as string }));
             }
-        } catch {
-            // Fallback: let user type a path
-            const userPath = prompt('Enter the full path for the project folder:', formData.projectDir || '');
-            if (userPath) {
-                setFormData(prev => ({ ...prev, projectDir: userPath }));
+            return;
+        } catch { /* not in Tauri — fall through */ }
+
+        // 2. Try backend osascript native macOS folder picker
+        try {
+            const res = await fetch('http://127.0.0.1:43123/dialog/folder', { method: 'POST' });
+            const data = await res.json();
+            if (data.ok && data.path) {
+                setFormData(prev => ({ ...prev, projectDir: data.path }));
+                return;
             }
-        }
+            if (data.cancelled) return; // user dismissed — do nothing
+        } catch { /* backend unavailable — fall through */ }
+
+        // 3. Last resort: inline text input (no browser prompt())
+        setShowPathInput(true);
     };
 
     return (
@@ -97,8 +106,28 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
                                         type="button"
                                         className="btn-secondary btn-sm"
                                         onClick={handleBrowseFolder}
-                                    >Browse</button>
+                                    >📁 Browse</button>
                                 </div>
+                                {showPathInput && (
+                                    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                                        <input
+                                            type="text"
+                                            autoFocus
+                                            placeholder="Paste full folder path, e.g. /Users/you/Videos/MyProject"
+                                            style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                    const val = (e.target as HTMLInputElement).value.trim();
+                                                    if (val) setFormData(prev => ({ ...prev, projectDir: val }));
+                                                    setShowPathInput(false);
+                                                } else if (e.key === 'Escape') {
+                                                    setShowPathInput(false);
+                                                }
+                                            }}
+                                        />
+                                        <button className="btn-text btn-sm" onClick={() => setShowPathInput(false)}>✕</button>
+                                    </div>
+                                )}
                                 <small style={{ color: 'var(--text-muted)', fontSize: 11 }}>
                                     All assets, renders & temp files will live here
                                 </small>
