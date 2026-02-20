@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -1020,7 +1021,38 @@ fn app_metadata() -> Value {
     })
 }
 
+fn start_backend_server() -> Option<std::process::Child> {
+    let root = workspace_root().ok()?;
+    let server_script = root.join("desktop").join("backend").join("server.mjs");
+    if !server_script.exists() {
+        eprintln!("[Tauri] Backend script not found: {:?}", server_script);
+        return None;
+    }
+    let node = node_binary();
+    match Command::new(&node)
+        .arg(&server_script)
+        .current_dir(&root)
+        .spawn()
+    {
+        Ok(child) => {
+            eprintln!("[Tauri] Backend server started (pid={})", child.id());
+            Some(child)
+        }
+        Err(e) => {
+            eprintln!("[Tauri] Failed to start backend server: {e}");
+            None
+        }
+    }
+}
+
 fn main() {
+    // Start the HTTP backend server as a background process.
+    // The UI health-check will connect to it automatically.
+    let backend_child: Arc<Mutex<Option<std::process::Child>>> =
+        Arc::new(Mutex::new(start_backend_server()));
+
+    let backend_child_clone = Arc::clone(&backend_child);
+
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             discover_models,
@@ -1043,6 +1075,25 @@ fn main() {
             save_timeline,
             app_metadata
         ])
+        .on_window_event(move |_window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                // Kill the backend server when the last window closes
+                if let Ok(mut guard) = backend_child_clone.lock() {
+                    if let Some(ref mut child) = *guard {
+                        let _ = child.kill();
+                        eprintln!("[Tauri] Backend server stopped");
+                    }
+                    *guard = None;
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running Lapaas AI Editor desktop shell");
+
+    // Ensure backend is killed if run() returns
+    if let Ok(mut guard) = backend_child.lock() {
+        if let Some(ref mut child) = *guard {
+            let _ = child.kill();
+        }
+    }
 }
