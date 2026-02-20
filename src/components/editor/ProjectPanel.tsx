@@ -13,7 +13,7 @@ export const ProjectPanel: React.FC = () => {
     const [templateSearch, setTemplateSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState<string>('all');
     const [selectedTemplate, setSelectedTemplate] = useState<TemplateMetadata | null>(null);
-    const { currentProject, media, importMedia, backendAvailable, loadProject, agenticEdit, agenticProgress, pipelineStage, addTemplateClip, addTrack, currentTime, tracks } = useEditor();
+    const { currentProject, media, importMedia, backendAvailable, loadProject, pipelineStage, addTemplateClip, addTrack, currentTime, tracks } = useEditor();
 
     const allTemplates = useMemo(() => getTemplateRegistry(), []);
     const filteredTemplates = useMemo(() => {
@@ -235,44 +235,6 @@ export const ProjectPanel: React.FC = () => {
                                 )}
                             </div>
 
-                            {/* AI Edit Section */}
-                            {currentProject && media.some((m: any) => m.status === 'ok' && m.type?.toLowerCase() === 'video') && (
-                                <div style={{ marginTop: 16, padding: '12px', background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12))', borderRadius: 10, border: '1px solid rgba(99,102,241,0.25)' }}>
-                                    <button
-                                        className="btn-primary"
-                                        style={{
-                                            width: '100%',
-                                            padding: '10px 16px',
-                                            fontSize: 13,
-                                            fontWeight: 600,
-                                            background: 'linear-gradient(135deg, #6366f1, #a855f7)',
-                                            border: 'none',
-                                            borderRadius: 8,
-                                            color: '#fff',
-                                            cursor: pipelineStage === 'transcribing' ? 'wait' : 'pointer',
-                                            opacity: pipelineStage === 'transcribing' ? 0.7 : 1,
-                                        }}
-                                        onClick={() => agenticEdit()}
-                                        disabled={pipelineStage === 'transcribing'}
-                                    >
-                                        {pipelineStage === 'transcribing' ? '🔄 AI is editing...' : '🤖 AI Edit (Hindi-Optimized)'}
-                                    </button>
-                                    {agenticProgress && agenticProgress.status !== 'idle' && (
-                                        <div style={{ marginTop: 8 }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
-                                                <span>{agenticProgress.currentStep}</span>
-                                                <span>{agenticProgress.percent}%</span>
-                                            </div>
-                                            <div style={{ height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
-                                                <div style={{ height: '100%', width: `${agenticProgress.percent}%`, background: 'linear-gradient(90deg, #6366f1, #a855f7)', borderRadius: 2, transition: 'width 0.5s ease' }} />
-                                            </div>
-                                            {agenticProgress.detail && (
-                                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>{agenticProgress.detail}</div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
                         </div>
                     )}
 
