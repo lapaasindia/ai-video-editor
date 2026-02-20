@@ -1,10 +1,10 @@
+import React, { useState, useRef, useEffect } from 'react';
 import { ProjectPanel } from './components/editor/ProjectPanel';
 import { PreviewPanel } from './components/editor/PreviewPanel';
 import { TimelinePanel } from './components/editor/TimelinePanel';
 import { PropertiesPanel } from './components/editor/PropertiesPanel';
 import { EditorProvider, useEditor } from './context/EditorContext';
 import { ModelManager } from './components/settings/ModelManager';
-import { useState } from 'react';
 import { LogViewer } from './components/debug/LogViewer';
 import './App.css';
 
@@ -69,34 +69,141 @@ import './templates/social-hooks/StampVerdict01';
 import './templates/social-hooks/TimelineSteps01';
 import './templates/social-hooks/AutoWhoosh01';
 
+// ── Dropdown menu component ───────────────────────────────────────────────────
+interface MenuItem {
+    label: string;
+    shortcut?: string;
+    action?: () => void;
+    disabled?: boolean;
+    separator?: boolean;
+}
+
+const MenuDropdown: React.FC<{ label: string; items: MenuItem[]; active?: boolean }> = ({ label, items, active }) => {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    return (
+        <div ref={ref} style={{ position: 'relative' }}>
+            <button
+                className={`menu-item${active || open ? ' active' : ''}`}
+                onClick={() => setOpen(o => !o)}
+            >
+                {label}
+            </button>
+            {open && (
+                <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    marginTop: 4,
+                    background: '#2a2a2a',
+                    border: '1px solid #3a3a3a',
+                    borderRadius: 6,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                    minWidth: 200,
+                    zIndex: 1000,
+                    padding: '4px 0',
+                }}>
+                    {items.map((item, i) =>
+                        item.separator ? (
+                            <div key={i} style={{ height: 1, background: '#3a3a3a', margin: '4px 0' }} />
+                        ) : (
+                            <button
+                                key={i}
+                                disabled={item.disabled}
+                                onClick={() => { item.action?.(); setOpen(false); }}
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    width: '100%',
+                                    padding: '7px 16px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: item.disabled ? '#555' : '#e4e4e4',
+                                    fontSize: 13,
+                                    cursor: item.disabled ? 'default' : 'pointer',
+                                    textAlign: 'left',
+                                    gap: 24,
+                                    transition: 'background 0.1s',
+                                }}
+                                onMouseEnter={e => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = '#3a3a3a'; }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                            >
+                                <span>{item.label}</span>
+                                {item.shortcut && (
+                                    <span style={{ fontSize: 11, color: '#666', flexShrink: 0 }}>{item.shortcut}</span>
+                                )}
+                            </button>
+                        )
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const EditorLayout = () => {
-    const { currentProject, backendAvailable, saveProject, renderVideo, exportFCPXML, closeProject } = useEditor();
+    const {
+        currentProject, backendAvailable, saveProject, renderVideo, exportFCPXML,
+        closeProject, importMedia, undo, redo, canUndo, canRedo, resetPipeline,
+    } = useEditor();
     const [showSettings, setShowSettings] = useState(false);
+    const [showLogs, setShowLogs] = useState(false);
+
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            const mod = e.metaKey || e.ctrlKey;
+            if (mod && e.key === 's') { e.preventDefault(); saveProject?.(); }
+            if (mod && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo?.(); }
+            if (mod && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo?.(); }
+            if (mod && e.key === 'i') { e.preventDefault(); importMedia?.(); }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [saveProject, undo, redo, importMedia]);
+
+    const editMenuItems: MenuItem[] = [
+        { label: 'Undo', shortcut: '⌘Z', action: undo, disabled: !canUndo },
+        { label: 'Redo', shortcut: '⌘⇧Z', action: redo, disabled: !canRedo },
+        { separator: true },
+        { label: 'Import Media…', shortcut: '⌘I', action: () => importMedia?.(), disabled: !currentProject },
+        { label: 'Save Project', shortcut: '⌘S', action: () => saveProject?.() },
+        { separator: true },
+        { label: 'Close Project', action: () => closeProject?.(), disabled: !currentProject },
+        { label: 'Reset AI Pipeline', action: () => resetPipeline?.(), disabled: !currentProject },
+    ];
+
+    const viewMenuItems: MenuItem[] = [
+        { label: 'Settings', shortcut: '⌘,', action: () => setShowSettings(true) },
+        { separator: true },
+        { label: 'Output Logs', action: () => setShowLogs(v => !v) },
+        { separator: true },
+        { label: 'Export XML (FCPXML)', action: () => exportFCPXML?.(), disabled: !currentProject },
+        { label: 'Export Video', shortcut: '⌘E', action: () => renderVideo?.(), disabled: !currentProject },
+    ];
+
+    const helpMenuItems: MenuItem[] = [
+        { label: 'About Lapaas AI Editor', action: () => alert('Lapaas AI Editor\nBuilt with Tauri + React + Remotion') },
+        { separator: true },
+        { label: 'View on GitHub', action: () => window.open('https://github.com/lapaasindia/ai-video-editor', '_blank') },
+        { label: 'Report a Bug', action: () => window.open('https://github.com/lapaasindia/ai-video-editor/issues', '_blank') },
+    ];
 
     const handleDrop = async (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-
         if (!currentProject) return;
-
         const files = Array.from(e.dataTransfer.files);
-        if (files.length > 0) {
-            const file = files[0];
-            // @ts-ignore
-            const path = file.path || file.name;
-
-            // In browser, this might trigger upload if we enhance importMedia
-            // For now, let's just log it
-            console.log('Dropped file', path);
-
-            if (currentProject) {
-                // attempt import if we have a path (Tauri) or file object (Browser)
-                // importMedia handles both if we pass the right thing?
-                // importMedia expects string path. 
-                // We need to handle file upload for browser drop here if we want drag-drop to work in browser.
-                // For now, let's skip complex drag-drop for browser and rely on the button.
-            }
-        }
+        if (files.length > 0) console.log('Dropped file', (files[0] as any).path || files[0].name);
     };
 
     return (
@@ -110,11 +217,11 @@ const EditorLayout = () => {
                     <div className="app-logo">
                         <span className="app-name">Lapaas AI Editor</span>
                     </div>
-                    <nav className="app-menu">
-                        <button className="menu-item active">Edit</button>
-                        <button className="menu-item">View</button>
+                    <nav className="app-menu" style={{ display: 'flex', alignItems: 'center' }}>
+                        <MenuDropdown label="Edit" items={editMenuItems} active />
+                        <MenuDropdown label="View" items={viewMenuItems} />
                         <button className="menu-item" onClick={() => setShowSettings(true)}>Settings</button>
-                        <button className="menu-item">Help</button>
+                        <MenuDropdown label="Help" items={helpMenuItems} />
                     </nav>
                 </div>
                 <div className="menu-bar-center">
@@ -123,38 +230,32 @@ const EditorLayout = () => {
                 <div className="menu-bar-right">
                     <button
                         className="action-button secondary"
-                        onClick={() => saveProject && saveProject()}
-                        title="Save Project (Cmd+S)"
-                        style={{ marginRight: 10 }}
+                        onClick={() => saveProject?.()}
+                        title="Save Project (⌘S)"
+                        disabled={!currentProject}
+                        style={{ opacity: currentProject ? 1 : 0.4 }}
                     >
                         Save
                     </button>
                     {currentProject && (
                         <button
                             className="action-button secondary"
-                            onClick={() => closeProject && closeProject()}
+                            onClick={() => closeProject?.()}
                             title="Close current project"
-                            style={{ marginRight: 10 }}
                         >
                             Close
                         </button>
                     )}
                     <div
-                        title={backendAvailable ? 'Backend server connected' : 'Backend server not running – start it with: npm run desktop:backend'}
+                        title={backendAvailable ? 'Backend connected' : 'Backend not running'}
                         style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 5,
-                            fontSize: 11,
-                            color: backendAvailable ? '#2ecc71' : '#e74c3c',
-                            marginRight: 8,
-                            cursor: 'default',
+                            display: 'flex', alignItems: 'center', gap: 5,
+                            fontSize: 11, color: backendAvailable ? '#2ecc71' : '#e74c3c',
+                            cursor: 'default', padding: '0 4px',
                         }}
                     >
                         <span style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
+                            width: 8, height: 8, borderRadius: '50%',
                             background: backendAvailable ? '#2ecc71' : '#e74c3c',
                             display: 'inline-block',
                         }} />
@@ -162,13 +263,21 @@ const EditorLayout = () => {
                     </div>
                     <button
                         className="action-button secondary"
-                        onClick={() => exportFCPXML && exportFCPXML()}
-                        title="Export timeline to FCPXML"
-                        style={{ marginRight: 10 }}
+                        onClick={() => exportFCPXML?.()}
+                        title="Export FCPXML"
+                        disabled={!currentProject}
+                        style={{ opacity: currentProject ? 1 : 0.4 }}
                     >
                         Export XML
                     </button>
-                    <button className="action-button primary" onClick={() => renderVideo && renderVideo()}>Export Video</button>
+                    <button
+                        className="action-button primary"
+                        onClick={() => renderVideo?.()}
+                        disabled={!currentProject}
+                        style={{ opacity: currentProject ? 1 : 0.4 }}
+                    >
+                        Export Video
+                    </button>
                 </div>
             </header>
 
@@ -182,6 +291,7 @@ const EditorLayout = () => {
             </div>
 
             {showSettings && <ModelManager onClose={() => setShowSettings(false)} />}
+            {showLogs && <LogViewer />}
         </div>
     );
 };
