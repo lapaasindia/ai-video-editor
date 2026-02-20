@@ -402,7 +402,6 @@ async function main() {
                 query: d.imageQuery,
                 startUs: d.startUs,
                 endUs: d.endUs,
-                provider: 'pexels',
                 aiReason: `chunk-${d.chunkIndex}`,
             });
         }
@@ -413,7 +412,6 @@ async function main() {
                 query: d.videoQuery,
                 startUs: d.startUs,
                 endUs: d.endUs,
-                provider: 'pixabay',
                 aiReason: `chunk-${d.chunkIndex}`,
             });
         }
