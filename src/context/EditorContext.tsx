@@ -1000,11 +1000,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Add enrichment clips to overlay track
             if (templatePlacements.length > 0) {
                 setTracks(prev => prev.map(track => {
-                    if (track.id === 'track-overlays') {
+                    if (track.id === 'track-3') {
                         const enrichCLips = templatePlacements.map((p: any, idx: number) => ({
                             id: `enrich-${idx}`,
                             mediaId: '',
-                            trackId: 'track-overlays',
+                            trackId: 'track-3',
                             start: Number(p.startUs || 0) / 1_000_000,
                             duration: Number((p.endUs || 0) - (p.startUs || 0)) / 1_000_000,
                             offset: 0,
