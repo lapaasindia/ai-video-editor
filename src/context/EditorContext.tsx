@@ -1783,7 +1783,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         overlayClips.push({
                             id: c.clipId || `ov-${Date.now()}-${overlayClips.length}`,
                             mediaId: c.sourceRef || '',
-                            trackId: 'track-overlays',
+                            trackId: 'track-3',
                             start: startUs / 1_000_000,
                             duration: durationSec,
                             offset: 0,
@@ -1796,7 +1796,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         captionClips.push({
                             id: c.clipId || `cap-${Date.now()}-${captionClips.length}`,
                             mediaId: '',
-                            trackId: 'track-captions',
+                            trackId: 'track-4',
                             start: startUs / 1_000_000,
                             duration: durationSec,
                             offset: 0,
@@ -1807,10 +1807,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
 
                 const mappedTracks: Track[] = [
-                    { id: 'track-overlays', name: 'Overlays', type: 'overlay', clips: overlayClips, isLocked: false },
-                    { id: 'track-captions', name: 'Captions', type: 'text', clips: captionClips, isLocked: false },
+                    { id: 'track-3', name: 'Overlays', type: 'overlay', clips: overlayClips, isLocked: false },
+                    { id: 'track-4', name: 'Captions', type: 'text', clips: captionClips, isLocked: false },
                     { id: 'track-1', name: 'Video 1', type: 'video', clips: videoClips, isLocked: false },
-                    { id: 'track-audio', name: 'Audio 1', type: 'audio', clips: [], isLocked: false },
+                    { id: 'track-2', name: 'Audio 1', type: 'audio', clips: [], isLocked: false },
                 ];
 
                 setTracks(mappedTracks);
