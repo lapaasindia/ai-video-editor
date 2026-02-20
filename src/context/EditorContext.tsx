@@ -1525,18 +1525,30 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 
     // ── Backend health check ──────────────────────────────────────────────────
+    // Poll every 2s until connected, then slow to 10s to reduce noise.
 
     useEffect(() => {
+        let interval: ReturnType<typeof setInterval>;
+        let connected = false;
+
         const checkBackend = async () => {
             try {
                 const res = await fetch(`${BACKEND}/health`, { signal: AbortSignal.timeout(3000) });
-                setBackendAvailable(res.ok);
+                const ok = res.ok;
+                setBackendAvailable(ok);
+                if (ok && !connected) {
+                    connected = true;
+                    clearInterval(interval);
+                    interval = setInterval(checkBackend, 10000);
+                }
             } catch {
                 setBackendAvailable(false);
+                connected = false;
             }
         };
+
         checkBackend();
-        const interval = setInterval(checkBackend, 10000);
+        interval = setInterval(checkBackend, 2000);
         return () => clearInterval(interval);
     }, []);
 
