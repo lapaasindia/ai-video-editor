@@ -183,11 +183,9 @@ export const ProjectPanel: React.FC = () => {
 
                             <div className="section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <h3>Media</h3>
-                                {currentProject && (
-                                    <button className="btn-secondary btn-sm" onClick={() => importMedia()} title="Import video, audio or image">
-                                        + Import
-                                    </button>
-                                )}
+                                <button className="btn-secondary btn-sm" onClick={() => importMedia()} title="Import video, audio or image" disabled={!currentProject}>
+                                    + Import
+                                </button>
                             </div>
 
                             <div className="media-grid">
@@ -197,8 +195,7 @@ export const ProjectPanel: React.FC = () => {
                                     </div>
                                 ) : media.length === 0 ? (
                                     <div className="empty-state-small">
-                                        <p>No media imported</p>
-                                        <button className="btn-secondary btn-sm" onClick={() => importMedia()}>Import Video</button>
+                                        <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>No media imported</p>
                                     </div>
                                 ) : (
                                     media.map((item) => (
