@@ -1114,8 +1114,8 @@ fn main() {
 
     // Ensure backend is killed if run() returns
     if let Ok(mut guard) = backend_child.lock() {
-        if let Some(ref mut child) = *guard {
+        if let Some(child) = guard.as_mut() {
             let _ = child.kill();
         }
-    }
+    };
 }
