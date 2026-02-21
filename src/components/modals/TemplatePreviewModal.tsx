@@ -118,7 +118,7 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({ temp
                             {template.description}
                         </p>
                         <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
-                            {template.tags.map(tag => (
+                            {(template.tags || []).map(tag => (
                                 <span key={tag} style={{
                                     fontSize: '0.75rem',
                                     padding: '2px 6px',
