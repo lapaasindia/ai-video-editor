@@ -175,6 +175,15 @@ import './templates/business-marketing/ResourceDownloadList';
 import './templates/business-marketing/TeamRosterGrid';
 import './templates/business-marketing/ProductFeaturesGrid';
 import './templates/business-marketing/PricingTiers';
+import './templates/business-marketing/HistoryMilestones';
+import './templates/business-marketing/WebinarAgenda';
+import './templates/business-marketing/MarketShareBlocks';
+import './templates/business-marketing/SpeakerRoster';
+import './templates/business-marketing/SponsorBanner';
+import './templates/business-marketing/ContactInfoCard';
+import './templates/business-marketing/InteractivePoll';
+import './templates/business-marketing/BeforeAfterSplit';
+import './templates/business-marketing/HorizontalRoadmap';
 
 const EditorLayout = () => {
     const {
