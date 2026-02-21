@@ -65,7 +65,7 @@ export const useTauri = () => {
                 throw e;
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [_isTauri]);
 
     return { invokeCommand, isTauri: _isTauri };
