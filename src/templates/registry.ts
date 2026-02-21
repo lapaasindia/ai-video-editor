@@ -15,6 +15,8 @@ export const TEMPLATE_CATEGORIES = [
     'lower-thirds',
     'startup-showcase',
     'social-hooks',
+    'business-marketing',
+    'platform-mockups',
 ] as const;
 
 export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
@@ -85,6 +87,8 @@ export function getCategoryLabel(cat: TemplateCategory): string {
         'lower-thirds': 'Lower Thirds & Tickers',
         'startup-showcase': 'Startup Showcase',
         'social-hooks': 'Social Hooks & Cuts',
+        'business-marketing': 'Business Marketing',
+        'platform-mockups': 'Platform Mockups',
     };
     return labels[cat];
 }
