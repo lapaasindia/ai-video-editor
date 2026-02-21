@@ -62,7 +62,7 @@ export const PricingTiers: React.FC<Props> = ({
 
     // Grid layout
     const totalTiers = tiers.length;
-    const cols = isPortrait ? 1 : totalTiers;
+    const cols = isPortrait ? 1 : Math.min(3, totalTiers);
     const paddingX = isPortrait ? 40 * scale : 120 * scale;
     const gap = isPortrait ? 20 * scale : 40 * scale;
     const availableWidth = width - (paddingX * 2);
