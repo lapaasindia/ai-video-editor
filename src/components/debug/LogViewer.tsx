@@ -93,7 +93,7 @@ export const LogViewer: React.FC = () => {
                             {log.level.toUpperCase()}
                         </span>:
                         <span style={{ marginLeft: '8px', color: '#cccccc' }}>{log.message}</span>
-                        {log.data && (
+                        {log.data !== undefined && (
                             <pre style={{ margin: '2px 0 0 20px', color: '#9cdcfe', fontSize: '11px', overflowX: 'auto' }}>
                                 {typeof log.data === 'object' ? JSON.stringify(log.data, null, 2) : String(log.data)}
                             </pre>

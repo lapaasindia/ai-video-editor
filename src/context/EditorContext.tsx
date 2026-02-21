@@ -190,7 +190,6 @@ const EditorContext = createContext<EditorContextType | null>(null);
 export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { invokeCommand, isTauri } = useTauri();
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
 
     const DEFAULT_TRACKS: Track[] = [
         { id: 'track-1', type: 'video', name: 'Video 1', clips: [] },
@@ -357,7 +356,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ── Media import ─────────────────────────────────────────────────────────
 
     const importMedia = useCallback(async (_path?: string) => {
+        logger.info('import', 'importMedia called', { hasProject: !!currentProject, mediaCount: media.length, path: _path });
         if (!currentProject) {
+            logger.warning('import', 'No project — aborting import');
             alert('Please create a project first');
             return;
         }
@@ -365,26 +366,36 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // Check if there is already a video imported (successful or processing)
         const hasVideo = media.some(m => m.type.toLowerCase() === 'video');
         if (hasVideo) {
+            logger.warning('import', 'Video already imported — blocked', { existingMedia: media.map(m => ({ id: m.id, status: m.status, type: m.type })) });
             alert('Lapaas AI Editor currently only supports editing 1 video at a time per project. Please close this project and create a new one to edit a different video.');
             return;
         }
 
         if (fileInputRef.current) {
+            logger.trace('import', 'Triggering native file picker');
             fileInputRef.current.click();
+        } else {
+            logger.err('import', 'fileInputRef is null — hidden <input> not mounted');
         }
     }, [currentProject, media]);
 
     const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
+        logger.info('import', 'handleFileUpload fired', { hasFile: !!file, fileName: file?.name, fileSize: file?.size, fileType: file?.type });
+        if (!file) {
+            logger.warning('import', 'No file selected — user cancelled picker');
+            return;
+        }
 
         if (!currentProject) {
+            logger.err('import', 'handleFileUpload: no currentProject');
             alert('Please create a project first');
             return;
         }
 
         const tempId = `media-${Date.now()}`;
         const mediaName = file.name;
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
 
         setMedia(prev => [...prev, {
             id: tempId,
@@ -395,45 +406,67 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }]);
         setStatusWrapper('processing', `Uploading ${mediaName}...`);
         setPipelineProgress({ percent: 0, message: 'Uploading video…', startedAt: Date.now() });
-        logger.log(`Starting upload for file: ${mediaName}`);
+
+        const finishImport = logger.step('import', `Import ${mediaName} (${fileSizeMB} MB)`, {
+            tempId, projectId: currentProject.id, fileSize: file.size, fileType: file.type,
+        });
 
         try {
             // Step 1: Upload file to server (using XHR for progress)
+            const finishUpload = logger.step('upload', `XHR upload → ${BACKEND}/media/upload`, {
+                fileName: mediaName, sizeBytes: file.size, endpoint: `${BACKEND}/media/upload`,
+            });
+
             const uploadResponse = await new Promise<Response>((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', `${BACKEND}/media/upload`);
                 xhr.setRequestHeader('x-filename', encodeURIComponent(file.name));
-                xhr.upload.onprogress = (e) => {
-                    if (e.lengthComputable) {
-                        const pct = Math.round((e.loaded / e.total) * 90); // 0-90% for upload
+                xhr.upload.onprogress = (progressEvent) => {
+                    if (progressEvent.lengthComputable) {
+                        const pct = Math.round((progressEvent.loaded / progressEvent.total) * 90);
                         setPipelineProgress(prev => prev ? { ...prev, percent: pct, message: `Uploading… ${pct}%` } : prev);
+                        if (pct % 25 === 0) {
+                            logger.trace('upload', `Upload progress: ${pct}%`, { loaded: progressEvent.loaded, total: progressEvent.total });
+                        }
                     }
                 };
                 xhr.onload = () => {
+                    logger.trace('upload', `XHR onload: status=${xhr.status}`, { responseLength: xhr.responseText?.length });
                     const resp = new Response(xhr.responseText, { status: xhr.status, statusText: xhr.statusText });
                     resolve(resp);
                 };
-                xhr.onerror = () => reject(new Error('Upload network error'));
-                xhr.ontimeout = () => reject(new Error('Upload timed out'));
+                xhr.onerror = () => {
+                    logger.err('upload', 'XHR onerror — network failure', { readyState: xhr.readyState, status: xhr.status });
+                    reject(new Error('Upload network error'));
+                };
+                xhr.ontimeout = () => {
+                    logger.err('upload', 'XHR ontimeout', { readyState: xhr.readyState });
+                    reject(new Error('Upload timed out'));
+                };
                 xhr.send(file);
             });
 
             if (!uploadResponse.ok) {
                 const text = await uploadResponse.text();
+                logger.err('upload', `Upload HTTP error`, { status: uploadResponse.status, body: text });
                 throw new Error(`Upload failed (${uploadResponse.status}): ${text}`);
             }
 
             const uploadResult = await uploadResponse.json();
-            logger.log('Upload successful', uploadResult);
+            finishUpload({ ok: uploadResult.ok, path: uploadResult.path, filename: uploadResult.filename });
 
             if (!uploadResult.ok || !uploadResult.path) {
+                logger.err('upload', 'Upload response missing ok/path', uploadResult);
                 throw new Error('Upload response missing path');
             }
 
-            // Step 2: Ingest the uploaded file (30s timeout — ffprobe only, no proxy)
+            // Step 2: Ingest the uploaded file (ffprobe metadata)
             setStatusWrapper('processing', `Processing ${mediaName}...`);
             setPipelineProgress(prev => prev ? { ...prev, percent: 92, message: 'Processing video metadata…' } : prev);
-            logger.log(`Ingesting from: ${uploadResult.path}`);
+
+            const finishIngest = logger.step('ingest', `Ingest → ${BACKEND}/media/ingest`, {
+                projectId: currentProject.id, inputPath: uploadResult.path,
+            });
 
             const ingestResponse = await fetch(`${BACKEND}/media/ingest`, {
                 method: 'POST',
@@ -449,14 +482,17 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (!ingestResponse.ok) {
                 const text = await ingestResponse.text();
+                logger.err('ingest', `Ingest HTTP error`, { status: ingestResponse.status, body: text });
                 throw new Error(`Ingest failed (${ingestResponse.status}): ${text}`);
             }
 
             const ingestResult = await ingestResponse.json();
-            logger.log('Ingest successful', ingestResult);
+            finishIngest({ durationSec: ingestResult.media?.durationSec, codec: ingestResult.media?.codec, resolution: ingestResult.media?.resolution });
 
             const durationSec = ingestResult.media?.durationSec;
             const finalPath = uploadResult.path;
+
+            logger.info('import', `Media ready`, { tempId, finalPath, durationSec });
 
             setMedia(prev => prev.map(item =>
                 item.id === tempId
@@ -464,7 +500,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     : item
             ));
             setPipelineProgress(prev => prev ? { ...prev, percent: 100, message: 'Import complete!' } : prev);
-            setTimeout(() => setPipelineProgress(null), 1500); // Clear after 1.5s
+            setTimeout(() => setPipelineProgress(null), 1500);
             setStatusWrapper('ready', `Imported: ${mediaName}`);
 
             // Store inputPath on project for pipeline use
@@ -472,6 +508,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // Auto-create a default clip on track-1 so the video plays immediately
             if (durationSec && durationSec > 0) {
+                logger.info('timeline', 'Auto-creating video clip on track-1', { durationSec, mediaId: tempId });
                 setTracks(prev => prev.map(track => {
                     if (track.id === 'track-1' && track.clips.length === 0) {
                         return {
@@ -490,13 +527,17 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     }
                     return track;
                 }));
+            } else {
+                logger.warning('import', 'No duration returned from ingest — skipping auto-clip', { durationSec });
             }
+
+            finishImport({ status: 'ok', durationSec, finalPath });
 
         } catch (error: any) {
             const msg = error?.name === 'TimeoutError'
                 ? 'Ingest timed out — file may be too large. Try a smaller file.'
                 : (error?.message || error?.name || JSON.stringify(error) || 'Unknown error');
-            logger.error('Import Error', { message: msg, error });
+            logger.err('import', `Import FAILED: ${msg}`, { errorName: error?.name, errorMessage: error?.message, stack: error?.stack });
             setMedia(prev => prev.map(item =>
                 item.id === tempId ? { ...item, status: 'error' as const } : item
             ));
@@ -510,13 +551,16 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ── Pipeline: Start Editing ───────────────────────────────────────────────
 
     const startEditing = useCallback(async () => {
+        logger.info('transcribe', 'startEditing called', { hasProject: !!currentProject, mediaCount: media.length });
         if (!currentProject) {
+            logger.warning('transcribe', 'No active project — aborting');
             alert('No active project');
             return;
         }
 
         const videoItem = media.find(m => m.status === 'ok' && m.type.toLowerCase() === 'video');
         if (!videoItem) {
+            logger.warning('transcribe', 'No video with status=ok found', { media: media.map(m => ({ id: m.id, status: m.status, type: m.type })) });
             alert('Please import a video first (status must be OK)');
             return;
         }
@@ -526,10 +570,18 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setLastFailedStep(null);
         setPipelineProgress({ percent: 5, message: 'Extracting audio…', startedAt: Date.now() });
         setStatusWrapper('processing', 'Transcribing audio…');
-        logger.log('startEditing: calling /pipeline/transcribe', { projectId: currentProject.id, input: videoItem.path });
+
+        const finishTranscribe = logger.step('transcribe', 'Transcribe pipeline', {
+            projectId: currentProject.id, input: videoItem.path, mode: currentProject.aiMode,
+            language: currentProject.language, model: currentProject.transcriptionModel,
+        });
 
         try {
             setPipelineProgress(prev => prev ? { ...prev, percent: 15, message: 'Running speech recognition…' } : prev);
+            logger.trace('transcribe', `POST ${BACKEND}/pipeline/transcribe`, {
+                projectId: currentProject.id, input: videoItem.path,
+            });
+
             const res = await fetch(`${BACKEND}/pipeline/transcribe`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -545,12 +597,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (!res.ok) {
                 const text = await res.text();
+                logger.err('transcribe', `HTTP ${res.status}`, { body: text });
                 throw new Error(`Transcription failed (${res.status}): ${text}`);
             }
 
             const data = await res.json();
             setPipelineProgress(prev => prev ? { ...prev, percent: 90, message: 'Parsing transcript…' } : prev);
-            logger.log('transcription result', data);
+            logger.info('transcribe', 'Transcription response received', { wordCount: data.wordCount, segmentCount: data.transcript?.segments?.length });
 
             // Store the full transcript
             setFullTranscript(data.transcript || null);
@@ -565,13 +618,15 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }));
             setTranscript(segments);
 
+            finishTranscribe({ segmentCount: segments.length, wordCount: data.wordCount });
+
             // Move to transcript review stage — user must approve
             setPipelineProgress(null);
             setPipelineStage('transcript_ready');
             setStatusWrapper('ready', `Transcription complete — ${segments.length} segments, ${data.wordCount || 0} words. Review and approve.`);
 
         } catch (err: any) {
-            logger.error('startEditing (transcribe) failed', err);
+            logger.err('transcribe', `startEditing FAILED: ${err.message}`, { stack: err?.stack });
             setLastFailedStep('transcribe');
             setPipelineProgress(null);
             setPipelineStage('error');
@@ -583,17 +638,23 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ── Pipeline: Approve Transcript → Plan Cuts ──────────────────────────────
 
     const approveTranscript = useCallback(async () => {
-        if (!currentProject) return;
+        logger.info('cut-plan', 'approveTranscript called', { hasProject: !!currentProject });
+        if (!currentProject) { logger.warning('cut-plan', 'No project — aborting'); return; }
 
         const videoItem = media.find(m => m.status === 'ok' && m.type.toLowerCase() === 'video');
-        if (!videoItem) return;
+        if (!videoItem) { logger.warning('cut-plan', 'No video with status=ok — aborting'); return; }
 
         setPipelineStage('planning_cuts');
         setPipelineProgress({ percent: 10, message: 'Analyzing transcript for silences…', startedAt: Date.now() });
         setStatusWrapper('processing', 'Analyzing video for cuts…');
-        logger.log('approveTranscript: calling /pipeline/cut-plan');
+
+        const finishCutPlan = logger.step('cut-plan', 'Cut-plan pipeline', {
+            projectId: currentProject.id, input: videoItem.path, fps: currentProject.fps,
+            llmProvider: currentProject.llmProvider, llmModel: currentProject.llmModel,
+        });
 
         try {
+            logger.trace('cut-plan', `POST ${BACKEND}/pipeline/cut-plan`);
             const res = await fetch(`${BACKEND}/pipeline/cut-plan`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -610,12 +671,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (!res.ok) {
                 const text = await res.text();
+                logger.err('cut-plan', `HTTP ${res.status}`, { body: text });
                 throw new Error(`Cut planning failed (${res.status}): ${text}`);
             }
 
             setPipelineProgress(prev => prev ? { ...prev, percent: 80, message: 'Building timeline…' } : prev);
             const data = await res.json();
-            logger.log('cut-plan result', data);
+            logger.info('cut-plan', 'Cut-plan response', { removeRangesCount: data.removeRanges?.length, timelineClipCount: data.timeline?.clips?.length });
 
             // Extract cut ranges
             const removeRanges: CutRange[] = (data.removeRanges || []).map((r: any) => ({
@@ -629,6 +691,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Populate timeline from returned clips
             const timelineClips = data.timeline?.clips || [];
             if (timelineClips.length > 0) {
+                logger.info('timeline', `Populating track-1 with ${timelineClips.length} clips from cut-plan`);
                 setTracks(prev => prev.map(track => {
                     if (track.id === 'track-1') {
                         const videoClips = timelineClips
@@ -649,12 +712,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }));
             }
 
+            finishCutPlan({ removeRangesCount: removeRanges.length, timelineClipCount: timelineClips.length });
             setPipelineProgress(null);
             setPipelineStage('cuts_ready');
             setStatusWrapper('ready', `${removeRanges.length} cuts found. Review on timeline, then approve.`);
 
         } catch (err: any) {
-            logger.error('approveTranscript (cut-plan) failed', err);
+            logger.err('cut-plan', `approveTranscript FAILED: ${err.message}`, { stack: err?.stack });
             setLastFailedStep('cut-plan');
             setPipelineProgress(null);
             setPipelineStage('error');
@@ -687,7 +751,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ── Process a single chunk (overlay plan + asset fetch) ──────────────────
 
     const processChunk = useCallback(async (chunkIdx: number, chunks: any[]) => {
-        if (!currentProject || chunkIdx >= chunks.length) return;
+        logger.info('overlay', `processChunk ${chunkIdx + 1}/${chunks.length}`, { chunkIdx, totalChunks: chunks.length });
+        if (!currentProject || chunkIdx >= chunks.length) {
+            logger.warning('overlay', 'processChunk: no project or chunkIdx out of range', { chunkIdx, totalChunks: chunks.length });
+            return;
+        }
 
         const chunk = chunks[chunkIdx];
         setPipelineStage('overlaying_chunk');
@@ -696,8 +764,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setPipelineProgress({ percent: chunkPct, message: `Planning overlays for chunk ${chunkIdx + 1}/${chunks.length}…`, startedAt: Date.now() });
         setStatusWrapper('processing', `Planning overlays for chunk ${chunkIdx + 1}/${chunks.length}…`);
 
+        const finishChunk = logger.step('overlay', `Chunk ${chunkIdx + 1} overlay plan`, {
+            chunkIdx, startUs: chunk.startUs, endUs: chunk.endUs, segmentCount: chunk.segments?.length,
+        });
+
         try {
             // 1. Call overlay plan
+            logger.trace('overlay', `POST ${BACKEND}/pipeline/overlay-plan-chunk`, { chunkIdx, startUs: chunk.startUs, endUs: chunk.endUs });
             const overlayRes = await fetch(`${BACKEND}/pipeline/overlay-plan-chunk`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -714,10 +787,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (!overlayRes.ok) {
                 const text = await overlayRes.text();
+                logger.err('overlay', `Overlay plan HTTP ${overlayRes.status}`, { body: text, chunkIdx });
                 throw new Error(`Overlay planning failed: ${text}`);
             }
 
             const overlayData = await overlayRes.json();
+            logger.info('overlay', `Chunk ${chunkIdx + 1}: ${overlayData.overlays?.length || 0} overlays returned`);
             const overlays = (overlayData.overlays || []).map((o: any) => ({
                 id: o.id || `overlay-${chunkIdx}-${Math.random().toString(36).slice(2, 6)}`,
                 templateId: o.templateId || '',
@@ -737,6 +812,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setPipelineProgress(prev => prev ? { ...prev, percent: chunkPct + Math.round(50 / chunks.length), message: `Fetching assets for chunk ${chunkIdx + 1}…` } : prev);
             for (const overlay of overlays) {
                 if (!overlay.assetQuery) continue;
+                const finishAsset = logger.step('asset', `Fetch asset: "${overlay.assetQuery}"`);
                 try {
                     const assetRes = await fetch(`${BACKEND}/pipeline/fetch-asset`, {
                         method: 'POST',
@@ -751,17 +827,23 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     if (assetRes.ok) {
                         const assetData = await assetRes.json();
                         overlay.assetPath = assetData.localPath || '';
+                        finishAsset({ localPath: overlay.assetPath });
+                    } else {
+                        logger.warning('asset', `Asset fetch HTTP ${assetRes.status} for "${overlay.assetQuery}"`);
+                        finishAsset({ failed: true, status: assetRes.status });
                     }
                 } catch (e: any) {
-                    logger.error(`Asset fetch for "${overlay.assetQuery}" failed: ${e?.message || e}`);
+                    logger.err('asset', `Asset fetch failed: "${overlay.assetQuery}"`, { error: e?.message });
+                    finishAsset({ failed: true, error: e?.message });
                 }
             }
 
             setCurrentChunkOverlays(overlays);
             setChunkOverlays(prev => ({ ...prev, [chunkIdx]: overlays }));
+            finishChunk({ overlayCount: overlays.length, withAssets: overlays.filter((o: { assetPath?: string }) => o.assetPath).length });
             return overlays;
         } catch (err: any) {
-            logger.error(`processChunk ${chunkIdx} failed`, err);
+            logger.err('overlay', `processChunk ${chunkIdx} FAILED: ${err.message}`, { stack: err?.stack });
             throw err;
         }
     }, [currentProject, setStatusWrapper]);
@@ -972,14 +1054,19 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ── Pipeline: Edit Now ────────────────────────────────────────────────────
 
     const editNow = useCallback(async () => {
-        if (!currentProject) return;
+        logger.info('edit-now', 'editNow called', { hasProject: !!currentProject });
+        if (!currentProject) { logger.warning('edit-now', 'No project — aborting'); return; }
 
         setPipelineStage('enriching');
         setPipelineError(null);
         setStatusWrapper('processing', 'Enriching with templates and assets…');
-        logger.log('editNow: calling /edit-now', { projectId: currentProject.id });
+
+        const finishEditNow = logger.step('edit-now', 'Edit-now enrichment', {
+            projectId: currentProject.id, fps: currentProject.fps,
+        });
 
         try {
+            logger.trace('edit-now', `POST ${BACKEND}/edit-now`);
             const res = await fetch(`${BACKEND}/edit-now`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -993,11 +1080,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (!res.ok) {
                 const text = await res.text();
+                logger.err('edit-now', `HTTP ${res.status}`, { body: text });
                 throw new Error(`Edit Now failed (${res.status}): ${text}`);
             }
 
             const data = await res.json();
-            logger.log('editNow result', data);
+            logger.info('edit-now', 'Edit-now response', { templateCount: (data.templatePlacements || data.plan?.templatePlacements || []).length, assetCount: (data.assetPlacements || data.plan?.assetPlacements || []).length });
 
             const templatePlacements = data.templatePlacements || data.plan?.templatePlacements || [];
             const assetPlacements = data.assetPlacements || data.plan?.assetPlacements || [];
@@ -1027,11 +1115,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }));
             }
 
+            finishEditNow({ templateCount: templatePlacements.length, assetCount: assetPlacements.length });
             setPipelineStage('enrichment_ready');
             setStatusWrapper('ready', `Enrichment ready — ${templatePlacements.length} templates, ${assetPlacements.length} assets`);
 
         } catch (err: any) {
-            logger.error('editNow failed', err);
+            logger.err('edit-now', `editNow FAILED: ${err.message}`, { stack: err?.stack });
             setPipelineStage('error');
             setPipelineError(err.message);
             setStatusWrapper('error', `Edit Now failed: ${err.message}`);
@@ -1041,13 +1130,16 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ── Pipeline: Agentic Edit (full AI pipeline) ────────────────────────
 
     const agenticEdit = useCallback(async () => {
+        logger.info('agentic', 'agenticEdit called', { hasProject: !!currentProject, mediaCount: media.length });
         if (!currentProject) {
+            logger.warning('agentic', 'No active project — aborting');
             alert('No active project');
             return;
         }
 
         const videoItem = media.find(m => m.status === 'ok' && m.type.toLowerCase() === 'video');
         if (!videoItem) {
+            logger.warning('agentic', 'No video with status=ok — aborting', { media: media.map(m => ({ id: m.id, status: m.status, type: m.type })) });
             alert('Please import a video first');
             return;
         }
@@ -1056,14 +1148,24 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setPipelineError(null);
         setAgenticProgress({ currentStep: 'starting', percent: 0, status: 'running', detail: 'Initializing AI pipeline...' });
         setStatusWrapper('processing', 'AI is editing your video step-by-step…');
-        logger.log('agenticEdit: calling /agentic-edit', { projectId: currentProject.id, input: videoItem.path });
+
+        const finishAgentic = logger.step('agentic', 'Full agentic edit pipeline', {
+            projectId: currentProject.id, input: videoItem.path, language: currentProject.language,
+            fps: currentProject.fps, mode: currentProject.aiMode, llmProvider: currentProject.llmProvider,
+            llmModel: currentProject.llmModel,
+        });
 
         // Start progress polling
+        let lastPolledStep = '';
         const progressInterval = setInterval(async () => {
             try {
                 const res = await fetch(`${BACKEND}/agentic-edit/progress/${currentProject.id}`);
                 if (res.ok) {
                     const progress = await res.json();
+                    if (progress.currentStep !== lastPolledStep) {
+                        logger.info('agentic', `Progress poll: step=${progress.currentStep} ${progress.percent}%`, { detail: progress.detail });
+                        lastPolledStep = progress.currentStep;
+                    }
                     setAgenticProgress({
                         currentStep: progress.currentStep || 'processing',
                         percent: progress.percent || 0,
@@ -1076,6 +1178,9 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }, 2000);
 
         try {
+            logger.trace('agentic', `POST ${BACKEND}/agentic-edit`, {
+                projectId: currentProject.id, input: videoItem.path,
+            });
             const res = await fetch(`${BACKEND}/agentic-edit`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1096,11 +1201,18 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (!res.ok) {
                 const text = await res.text();
+                logger.err('agentic', `HTTP ${res.status}`, { body: text });
                 throw new Error(`Agentic Edit failed (${res.status}): ${text}`);
             }
 
             const data = await res.json();
-            logger.log('agenticEdit result', data);
+            logger.info('agentic', 'Agentic edit response received', {
+                hasAiDecisions: !!data.aiDecisions,
+                chunksAnalysed: data.aiDecisions?.chunksAnalysed,
+                chunksCut: data.aiDecisions?.chunksCut,
+                templatesSelected: data.aiDecisions?.templatesSelected,
+                stockMediaSuggested: data.aiDecisions?.stockMediaSuggested,
+            });
 
             // Extract results from the agentic pipeline
             const aiDecisions = data.aiDecisions || {};
@@ -1205,7 +1317,16 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 return next;
             });
 
-            logger.log(`High-retention: ${chunksAnalysed} chunks, ${chunksCut} cut, ${templatePlacements.length} templates, ${stockMedia.length} B-roll`);
+            finishAgentic({
+                chunksAnalysed, chunksCut,
+                templateCount: templatePlacements.length,
+                stockMediaCount: stockMedia.length,
+            });
+
+            logger.info('agentic', `High-retention edit complete`, {
+                chunksAnalysed, chunksCut,
+                templateCount: templatePlacements.length, stockMediaCount: stockMedia.length,
+            });
 
             setAgenticProgress({
                 currentStep: 'complete',
@@ -1221,7 +1342,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         } catch (err: any) {
             clearInterval(progressInterval);
-            logger.error('agenticEdit failed', err);
+            logger.err('agentic', `agenticEdit FAILED: ${err.message}`, { stack: err?.stack });
             setPipelineStage('error');
             setPipelineError(err.message);
             setAgenticProgress({ currentStep: 'error', percent: 0, status: 'failed', detail: err.message });
@@ -1232,14 +1353,20 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ── Pipeline: Render ──────────────────────────────────────────────────────
 
     const renderVideo = useCallback(async (options: { burnSubtitles?: boolean; quality?: string } = {}) => {
-        if (!currentProject) return;
+        logger.info('render', 'renderVideo called', { hasProject: !!currentProject, options });
+        if (!currentProject) { logger.warning('render', 'No project — aborting'); return; }
 
         setPipelineStage('rendering');
         setPipelineError(null);
         setStatusWrapper('processing', 'Rendering final video…');
-        logger.log('renderVideo: calling /render', { projectId: currentProject.id });
+
+        const finishRender = logger.step('render', 'Render pipeline', {
+            projectId: currentProject.id, burnSubtitles: options.burnSubtitles,
+            quality: options.quality,
+        });
 
         try {
+            logger.trace('render', `POST ${BACKEND}/render`);
             const res = await fetch(`${BACKEND}/render`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1252,11 +1379,16 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (!res.ok) {
                 const text = await res.text();
+                logger.err('render', `HTTP ${res.status}`, { body: text });
                 throw new Error(`Render failed (${res.status}): ${text}`);
             }
 
             const data = await res.json();
-            logger.log('renderVideo result', data);
+            logger.info('render', 'Render response received', {
+                outputPath: data.outputPath || data.output,
+                durationSec: data.durationSec,
+                overlayAppliedCount: data.overlayAppliedCount,
+            });
 
             const outputPath = data.outputPath || data.output || '';
             setRenderResult({
@@ -1265,11 +1397,12 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 overlayAppliedCount: data.overlayAppliedCount,
             });
 
+            finishRender({ outputPath, durationSec: data.durationSec, overlayAppliedCount: data.overlayAppliedCount });
             setPipelineStage('done');
             setStatusWrapper('ready', `Render complete: ${outputPath}`);
 
         } catch (err: any) {
-            logger.error('renderVideo failed', err);
+            logger.err('render', `renderVideo FAILED: ${err.message}`, { stack: err?.stack });
             setPipelineStage('error');
             setPipelineError(err.message);
             setStatusWrapper('error', `Render failed: ${err.message}`);

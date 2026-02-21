@@ -1317,27 +1317,50 @@ const server = http.createServer(async (req, res) => {
       const uploadProjectId = req.headers['x-project-id'] || '';
       const filename = decodeURIComponent(rawFilename);
       const safeName = path.basename(filename).replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      console.log(`[UPLOAD] Starting upload: ${filename} (project: ${uploadProjectId || 'none'})`);
+      
       // Store inside the project folder if project ID is provided
       let uploadDir;
       if (uploadProjectId) {
         const pDir = await projectDir(uploadProjectId);
         uploadDir = path.join(pDir, 'uploads');
+        console.log(`[UPLOAD] Project upload dir: ${uploadDir}`);
       } else {
         uploadDir = path.join(rootDir, 'desktop', 'data', 'uploads');
+        console.log(`[UPLOAD] Global upload dir: ${uploadDir}`);
       }
       await fs.mkdir(uploadDir, { recursive: true });
       const filePath = path.join(uploadDir, safeName);
+      console.log(`[UPLOAD] Target path: ${filePath}`);
 
       const writeStream = createWriteStream(filePath);
+      let bytesReceived = 0;
+
+      req.on('data', (chunk) => {
+        bytesReceived += chunk.length;
+        if (bytesReceived % (5 * 1024 * 1024) === 0) { // Log every 5MB
+          console.log(`[UPLOAD] Progress: ${(bytesReceived / (1024 * 1024)).toFixed(1)} MB`);
+        }
+      });
 
       req.pipe(writeStream);
 
       await new Promise((resolve, reject) => {
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-        req.on('error', reject);
+        writeStream.on('finish', () => {
+          console.log(`[UPLOAD] Complete: ${bytesReceived} bytes written to ${filePath}`);
+          resolve();
+        });
+        writeStream.on('error', (err) => {
+          console.error(`[UPLOAD] Write stream error:`, err);
+          reject(err);
+        });
+        req.on('error', (err) => {
+          console.error(`[UPLOAD] Request stream error:`, err);
+          reject(err);
+        });
       });
 
+      console.log(`[UPLOAD] Responding with: ok=true, path=${filePath}, filename=${safeName}`);
       sendJson(res, 200, {
         ok: true,
         path: filePath,
@@ -1374,7 +1397,10 @@ const server = http.createServer(async (req, res) => {
       const generateProxy = body.generateProxy === false ? 'false' : 'true';
       const generateWaveform = body.generateWaveform === false ? 'false' : 'true';
 
+      console.log(`[INGEST] Request: input=${input}, projectId=${projectId}, proxy=${generateProxy}, waveform=${generateWaveform}`);
+
       if (!input || !projectId) {
+        console.error(`[INGEST] Missing fields: input=${!!input}, projectId=${!!projectId}`);
         sendJson(res, 400, {
           error: 'Missing required fields: input, projectId.',
         });
@@ -1382,10 +1408,13 @@ const server = http.createServer(async (req, res) => {
       }
 
       try {
-        console.log('[Media Ingest] Processing:', input);
-        console.log('[Media Ingest] Project ID:', projectId);
+        console.log(`[INGEST] Starting ingest for: ${input}`);
+        console.log(`[INGEST] Project ID: ${projectId}`);
 
         const pDir = await projectDir(projectId);
+        console.log(`[INGEST] Project dir: ${pDir}`);
+        
+        const startTime = Date.now();
         const output = await runNodeScript(mediaIngestScript, [
           '--input',
           input,
@@ -1398,11 +1427,20 @@ const server = http.createServer(async (req, res) => {
           '--generate-waveform',
           generateWaveform,
         ], 300000);
+        const elapsed = Date.now() - startTime;
 
-        sendJson(res, 200, JSON.parse(output));
+        console.log(`[INGEST] Completed in ${elapsed}ms`);
+        console.log(`[INGEST] Script output:`, output);
+        
+        const parsed = JSON.parse(output);
+        console.log(`[INGEST] Parsed result: duration=${parsed.media?.durationSec}s, codec=${parsed.media?.codec}`);
+        
+        sendJson(res, 200, parsed);
       } catch (error) {
-        console.error('[Media Ingest] Error:', error.message);
-        console.error('[Media Ingest] Input path:', input);
+        const elapsed = Date.now() - startTime;
+        console.error(`[INGEST] Failed after ${elapsed}ms:`, error.message);
+        console.error(`[INGEST] Stack:`, error.stack);
+        console.error(`[INGEST] Input path:`, input);
         sendJson(res, 500, {
           error: 'Media ingest failed',
           details: error.message,
