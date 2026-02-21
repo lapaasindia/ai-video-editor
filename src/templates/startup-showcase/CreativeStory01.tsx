@@ -83,13 +83,13 @@ export const CreativeStory01: React.FC<Props> = (props) => {
                     transform: `translate(${wiggleX}px, ${wiggleY}px) rotate(${rotate}deg)`,
                     boxShadow: '10px 10px 20px rgba(0,0,0,0.2)',
                     background: '#fff',
-                    padding: 20 }}>
+                    padding: 20 * scale }}>
                     <AnimatedImage src={props.imageUrl} />
                     {/* Tape Effect */}
                     <div style={{
                         position: 'absolute',
                         top: -15, left: '50%', transform: 'translateX(-50%) rotate(-2deg)',
-                        width: 100, height: 30,
+                        width: 100 * scale, height: 30 * scale,
                         background: 'rgba(255,255,255,0.6)',
                         boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
                 </div>
@@ -109,7 +109,7 @@ export const CreativeStory01: React.FC<Props> = (props) => {
                     justifyContent: 'center',
                     alignItems: 'center',
                     color: props.paperColor,
-                    paddingTop: 40 }}>
+                    paddingTop: 40 * scale }}>
                     <EditableText
                         text={props.title}
                         fontSize={isPortrait ? 108 : 176}

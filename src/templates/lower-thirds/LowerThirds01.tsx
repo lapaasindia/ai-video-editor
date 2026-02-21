@@ -81,10 +81,10 @@ export const LowerThirds01: React.FC<Props> = (props) => {
                 <div
                     style={{
                         width: interpolate(barReveal, [0, 1], [0, isPortrait ? 260 : 360]),
-                        height: 6,
-                        borderRadius: 2,
+                        height: 6 * scale,
+                        borderRadius: 2 * scale,
                         background: GRADIENTS.bgMain,
-                        marginBottom: 24,
+                        marginBottom: 24 * scale,
                         boxShadow: `0 0 12px ${props.primaryColor}44`,
                     }}
                 />
@@ -95,16 +95,16 @@ export const LowerThirds01: React.FC<Props> = (props) => {
                         display: 'inline-flex',
                         flexDirection: 'column',
                         padding: `${14 * scale}px ${24 * scale}px`,
-                        borderRadius: 24,
+                        borderRadius: 24 * scale,
                         background: 'rgba(0,0,0,0.7)',
                         backdropFilter: 'blur(20px)',
                         border: `2px solid ${props.primaryColor}30`,
-                        gap: 8,
+                        gap: 8 * scale,
                         transform: `translateY(${interpolate(textReveal, [0, 1], [20, 0])}px)`,
                         opacity: textReveal,
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 * scale }}>
                         {props.accentEmoji && (
                             <span style={{ fontSize: 48 * scale }}>{props.accentEmoji}</span>
                         )}

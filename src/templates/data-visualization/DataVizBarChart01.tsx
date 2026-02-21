@@ -119,7 +119,7 @@ export const DataVizBarChart01: React.FC<Props> = (props) => {
                         fontFamily={interFont}
                         color={COLORS.textSecondary}
                         fontWeight={400}
-                        style={{ marginTop: 16 }}
+                        style={{ marginTop: 16 * scale }}
                     />
                 </div>
 
@@ -169,7 +169,7 @@ export const DataVizBarChart01: React.FC<Props> = (props) => {
                                     style={{
                                         flex: 1,
                                         height: isPortrait ? 48 : 36,
-                                        borderRadius: 16,
+                                        borderRadius: 16 * scale,
                                         background: 'rgba(255,255,255,0.04)',
                                         overflow: 'hidden',
                                         position: 'relative',
@@ -179,7 +179,7 @@ export const DataVizBarChart01: React.FC<Props> = (props) => {
                                         style={{
                                             width: `${widthPct * barGrow}%`,
                                             height: '100%',
-                                            borderRadius: 16,
+                                            borderRadius: 16 * scale,
                                             background: linearGradient(
                                                 90,
                                                 interpolate(hue, [0, 1], [0, 1]) > 0.5 ? props.accentColor : props.primaryColor,
@@ -213,7 +213,7 @@ export const DataVizBarChart01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 60], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain,
                 }}
             />

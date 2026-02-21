@@ -127,7 +127,7 @@ export const DataVizCounter01: React.FC<Props> = (props) => {
                         fontFamily={interFont}
                         color={COLORS.textSecondary}
                         fontWeight={400}
-                        style={{ marginTop: 16 }}
+                        style={{ marginTop: 16 * scale }}
                     />
                 </div>
 
@@ -165,10 +165,10 @@ export const DataVizCounter01: React.FC<Props> = (props) => {
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     padding: `${28 * scale}px`,
-                                    borderRadius: 40,
+                                    borderRadius: 40 * scale,
                                     background: 'rgba(255,255,255,0.02)',
                                     border: '2px solid rgba(255,255,255,0.05)',
-                                    gap: 16,
+                                    gap: 16 * scale,
                                     transform: `scale(${cardSpring})`,
                                     opacity: fadeIn(frame, delay),
                                 }}
@@ -208,7 +208,7 @@ export const DataVizCounter01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 80], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain,
                 }}
             />

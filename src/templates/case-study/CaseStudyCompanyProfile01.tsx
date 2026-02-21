@@ -106,7 +106,7 @@ export const CaseStudyCompanyProfile01: React.FC<Props> = (props) => {
                 <div
                     style={{
                         padding: `${6 * scale}px ${18 * scale}px`,
-                        borderRadius: 12,
+                        borderRadius: 12 * scale,
                         background: `${props.primaryColor}20`,
                         border: `2px solid ${props.primaryColor}40`,
                         opacity: fadeIn(frame, 5),
@@ -169,7 +169,7 @@ export const CaseStudyCompanyProfile01: React.FC<Props> = (props) => {
                         display: 'grid',
                         gridTemplateColumns: isPortrait ? '1fr 1fr' : 'repeat(4, 1fr)',
                         gap: isPortrait ? 24 : 40,
-                        marginTop: 16,
+                        marginTop: 16 * scale,
                         width: '100%',
                         maxWidth: isPortrait ? '100%' : 900 }}
                 >
@@ -180,9 +180,9 @@ export const CaseStudyCompanyProfile01: React.FC<Props> = (props) => {
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: isPortrait ? 'center' : 'flex-start',
-                                gap: 8,
+                                gap: 8 * scale,
                                 padding: `${16 * scale}px`,
-                                borderRadius: 24,
+                                borderRadius: 24 * scale,
                                 background: 'rgba(255,255,255,0.03)',
                                 border: '2px solid rgba(255,255,255,0.06)',
                                 opacity: fadeIn(frame, 45 + i * 8),
@@ -217,7 +217,7 @@ export const CaseStudyCompanyProfile01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 60], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain }}
             />
             )}

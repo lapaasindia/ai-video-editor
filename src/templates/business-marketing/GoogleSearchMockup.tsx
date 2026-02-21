@@ -110,7 +110,7 @@ export const GoogleSearchMockup: React.FC<Props> = ({
                         {currentQuery}
                         {/* Blinking Cursor */}
                         {!isSearchComplete && frame % 20 < 10 && (
-                            <div style={{ width: 2 * scale, height: 24 * scale, backgroundColor: '#000', marginLeft: 2 }} />
+                            <div style={{ width: 2 * scale, height: 24 * scale, backgroundColor: '#000', marginLeft: 2 * scale }} />
                         )}
                     </div>
                 </div>

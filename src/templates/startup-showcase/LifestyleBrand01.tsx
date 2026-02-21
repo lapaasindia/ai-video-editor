@@ -141,7 +141,7 @@ export const LifestyleBrand01: React.FC<Props> = (props) => {
                     />
                 </div>
 
-                <div style={{ marginTop: 32, opacity: fadeIn(frame, 50) }}>
+                <div style={{ marginTop: 32 * scale, opacity: fadeIn(frame, 50) }}>
                     <EditableText
                         text={props.subtitle}
                         fontSize={isPortrait ? 36 : 48}

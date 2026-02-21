@@ -114,7 +114,7 @@ export const FounderJourney01: React.FC<Props> = (props) => {
                 display: 'flex',
                 justifyContent: 'flex-end',
                 alignItems: 'center',
-                paddingBottom: 100,
+                paddingBottom: 100 * scale,
                 flexDirection: 'column',
                 zIndex: 20,
             }}>

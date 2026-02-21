@@ -128,7 +128,7 @@ linear-gradient(${props.primaryColor}08 1px, transparent 1px),
                                 top: isPortrait ? 30 : 40,
                                 left: isPortrait ? 20 : 30,
                                 padding: `${6 * scale}px ${16 * scale}px`,
-                                borderRadius: 12,
+                                borderRadius: 12 * scale,
                                 background: COLORS.accentLight,
                                 opacity: fadeIn(frame, 10),
                                 transform: `scale(${scaleIn(frame, fps, 10)})`,
@@ -163,7 +163,7 @@ linear-gradient(${props.primaryColor}08 1px, transparent 1px),
                                 display: 'inline-flex',
                                 alignSelf: 'flex-start',
                                 padding: `${6 * scale}px ${16 * scale}px`,
-                                borderRadius: 12,
+                                borderRadius: 12 * scale,
                                 background: COLORS.accentLight,
                                 opacity: fadeIn(frame, 10),
                             }}
@@ -185,7 +185,7 @@ linear-gradient(${props.primaryColor}08 1px, transparent 1px),
                             display: 'inline-flex',
                             alignSelf: 'flex-start',
                             padding: `${4 * scale}px ${12 * scale}px`,
-                            borderRadius: 4,
+                            borderRadius: 4 * scale,
                             border: `2px solid ${props.primaryColor}44`,
                             opacity: fadeIn(frame, 20),
                         }}
@@ -234,8 +234,8 @@ linear-gradient(${props.primaryColor}08 1px, transparent 1px),
                             display: 'flex',
                             alignItems: 'center',
                             flexWrap: isPortrait ? 'wrap' : 'nowrap',
-                            gap: 24,
-                            marginTop: 24,
+                            gap: 24 * scale,
+                            marginTop: 24 * scale,
                             opacity: fadeIn(frame, 50),
                         }}
                     >
@@ -248,8 +248,8 @@ linear-gradient(${props.primaryColor}08 1px, transparent 1px),
                         />
                         <div
                             style={{
-                                width: 1,
-                                height: 16,
+                                width: 1 * scale,
+                                height: 16 * scale,
                                 background: '#30363d',
                             }}
                         />
@@ -262,8 +262,8 @@ linear-gradient(${props.primaryColor}08 1px, transparent 1px),
                         />
                         <div
                             style={{
-                                width: 1,
-                                height: 16,
+                                width: 1 * scale,
+                                height: 16 * scale,
                                 background: '#30363d',
                             }}
                         />
@@ -288,7 +288,7 @@ linear-gradient(${props.primaryColor}08 1px, transparent 1px),
                         extrapolateRight: 'clamp',
                     })
                         }% `,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain,
                 }}
             />

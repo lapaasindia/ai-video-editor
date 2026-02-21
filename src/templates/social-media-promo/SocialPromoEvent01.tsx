@@ -97,7 +97,7 @@ export const SocialPromoEvent01: React.FC<Props> = (props) => {
                         style={{
                             display: 'inline-flex',
                             padding: `${5 * scale}px ${14 * scale}px`,
-                            borderRadius: 12,
+                            borderRadius: 12 * scale,
                             background: `${props.primaryColor}25`,
                             border: `2px solid ${props.primaryColor}50` }}
                     >
@@ -141,8 +141,8 @@ export const SocialPromoEvent01: React.FC<Props> = (props) => {
                     style={{
                         display: 'flex',
                         flexWrap: 'wrap',
-                        gap: 20,
-                        marginTop: 16,
+                        gap: 20 * scale,
+                        marginTop: 16 * scale,
                         opacity: fadeIn(frame, 35) }}
                 >
                     {[props.date, props.location, props.speakers].map((info, i) => (
@@ -150,7 +150,7 @@ export const SocialPromoEvent01: React.FC<Props> = (props) => {
                             key={i}
                             style={{
                                 padding: `${8 * scale}px ${16 * scale}px`,
-                                borderRadius: 16,
+                                borderRadius: 16 * scale,
                                 background: 'rgba(255,255,255,0.06)',
                                 border: '2px solid rgba(255,255,255,0.08)' }}
                         >
@@ -171,7 +171,7 @@ export const SocialPromoEvent01: React.FC<Props> = (props) => {
                         marginTop: isPortrait ? 18 : 30,
                         alignSelf: isPortrait ? 'stretch' : 'flex-start',
                         padding: `${16 * scale}px ${40 * scale}px`,
-                        borderRadius: 24,
+                        borderRadius: 24 * scale,
                         background: GRADIENTS.bgMain,
                         transform: `scale(${ctaSpring})`,
                         boxShadow: `0 0 40px ${props.primaryColor}33`,
@@ -195,7 +195,7 @@ export const SocialPromoEvent01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 60], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain }}
             />
         </AbsoluteFill>

@@ -80,15 +80,15 @@ export const LowerThirdsTopic01: React.FC<Props> = (props) => {
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 24,
-                        marginBottom: 20,
+                        gap: 24 * scale,
+                        marginBottom: 20 * scale,
                     }}
                 >
                     <div
                         style={{
                             width: interpolate(barWidth, [0, 1], [0, 48]),
-                            height: 8,
-                            borderRadius: 2,
+                            height: 8 * scale,
+                            borderRadius: 2 * scale,
                             background: GRADIENTS.bgMain,
                             boxShadow: `0 0 12px ${props.primaryColor}44`,
                         }}
@@ -129,7 +129,7 @@ export const LowerThirdsTopic01: React.FC<Props> = (props) => {
                     color={COLORS.textSecondary}
                     fontWeight={400}
                     style={{
-                        marginTop: 8,
+                        marginTop: 8 * scale,
                         opacity: interpolate(contentReveal, [0.3, 1], [0, 1], {
                             extrapolateLeft: 'clamp',
                             extrapolateRight: 'clamp',

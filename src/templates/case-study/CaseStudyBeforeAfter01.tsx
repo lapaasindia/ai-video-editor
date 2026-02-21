@@ -68,7 +68,7 @@ export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: 24,
+                    gap: 24 * scale,
                     opacity: fadeIn(frame, 0),
                     transform: slideIn(frame, 'down', 0, 20),
                     zIndex: 2,
@@ -116,7 +116,7 @@ export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
                         display: 'flex',
                         flexDirection: 'column',
                         padding: 64 * scale,
-                        borderRadius: 40,
+                        borderRadius: 40 * scale,
                         background: `${props.primaryColor}0a`,
                         border: `2px solid ${props.primaryColor}33`,
                         opacity: fadeIn(frame, 15),
@@ -130,7 +130,7 @@ export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
                         color={COLORS.accent}
                         fontWeight={800}
                         letterSpacing={4}
-                        style={{ marginBottom: 40 }}
+                        style={{ marginBottom: 40 * scale }}
                     />
                     {beforeItems.map((item, i) => (
                         <div
@@ -138,15 +138,15 @@ export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: 24,
-                                marginBottom: 28,
+                                gap: 24 * scale,
+                                marginBottom: 28 * scale,
                                 opacity: fadeIn(frame, 30 + i * 6),
                             }}
                         >
                             <div
                                 style={{
-                                    width: 8,
-                                    height: 8,
+                                    width: 8 * scale,
+                                    height: 8 * scale,
                                     borderRadius: '50%',
                                     background: COLORS.accent,
                                     flexShrink: 0,
@@ -182,7 +182,7 @@ export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: 56,
+                            fontSize: 56 * scale,
                             boxShadow: `0 0 30px ${props.successColor}44`,
                         }}
                     >
@@ -197,7 +197,7 @@ export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
                         display: 'flex',
                         flexDirection: 'column',
                         padding: 64 * scale,
-                        borderRadius: 40,
+                        borderRadius: 40 * scale,
                         background: `${props.successColor}0a`,
                         border: `2px solid ${props.successColor}33`,
                         opacity: fadeIn(frame, 60),
@@ -211,7 +211,7 @@ export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
                         color={COLORS.accent}
                         fontWeight={800}
                         letterSpacing={4}
-                        style={{ marginBottom: 40 }}
+                        style={{ marginBottom: 40 * scale }}
                     />
                     {afterItems.map((item, i) => (
                         <div
@@ -219,21 +219,21 @@ export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: 24,
-                                marginBottom: 28,
+                                gap: 24 * scale,
+                                marginBottom: 28 * scale,
                                 opacity: fadeIn(frame, 75 + i * 6),
                             }}
                         >
                             <div
                                 style={{
-                                    width: 20,
-                                    height: 20,
+                                    width: 20 * scale,
+                                    height: 20 * scale,
                                     borderRadius: '50%',
                                     background: `${props.successColor}33`,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    fontSize: 24,
+                                    fontSize: 24 * scale,
                                     color: props.successColor,
                                     flexShrink: 0,
                                 }}

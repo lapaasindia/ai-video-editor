@@ -138,7 +138,7 @@ export const TechInnovation01: React.FC<Props> = (props) => {
                 <div style={{
                     border: `2px solid ${props.primaryColor}`,
                     padding: '40px 80px',
-                    borderRadius: 4,
+                    borderRadius: 4 * scale,
                     background: '#00000080',
                     boxShadow: `0 0 20px ${props.primaryColor}40`,
                     transform: `scale(${spring({ frame, fps, config: { damping: 10 } })})`,
@@ -154,7 +154,7 @@ export const TechInnovation01: React.FC<Props> = (props) => {
                     />
                 </div>
 
-                <div style={{ marginTop: 40, opacity: fadeIn(frame, 20) }}>
+                <div style={{ marginTop: 40 * scale, opacity: fadeIn(frame, 20) }}>
                     <EditableText
                         text={props.subtitle}
                         fontSize={isPortrait ? 40 : 64}

@@ -87,7 +87,7 @@ export const CaseStudyTestimonialGrid01: React.FC<Props> = (props) => {
                         lineHeight={1.1}
                         letterSpacing={-1}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 20 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 24 * scale, marginTop: 20 * scale }}>
                         <EditableText
                             text={`⭐ ${props.rating}`}
                             fontSize={48 * scale}
@@ -128,7 +128,7 @@ export const CaseStudyTestimonialGrid01: React.FC<Props> = (props) => {
                                 key={i}
                                 style={{
                                     padding: `${20 * scale}px ${24 * scale}px`,
-                                    borderRadius: 32,
+                                    borderRadius: 32 * scale,
                                     background: 'rgba(255,255,255,0.03)',
                                     borderLeft: `3px solid ${props.primaryColor}`,
                                     opacity: fadeIn(frame, delay),
@@ -150,7 +150,7 @@ export const CaseStudyTestimonialGrid01: React.FC<Props> = (props) => {
                                     fontFamily={interFont}
                                     color={COLORS.accent}
                                     fontWeight={600}
-                                    style={{ marginTop: 20 }}
+                                    style={{ marginTop: 20 * scale }}
                                 />
                             </div>
                         );
@@ -165,7 +165,7 @@ export const CaseStudyTestimonialGrid01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 60], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain,
                 }}
             />

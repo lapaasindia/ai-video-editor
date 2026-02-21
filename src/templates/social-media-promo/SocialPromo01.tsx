@@ -164,9 +164,9 @@ export const SocialPromo01: React.FC<Props> = (props) => {
                 {/* CTA */}
                 <div
                     style={{
-                        marginTop: 32,
+                        marginTop: 32 * scale,
                         padding: `${14 * scale}px ${40 * scale}px`,
-                        borderRadius: 20,
+                        borderRadius: 20 * scale,
                         background: GRADIENTS.bgMain,
                         transform: `scale(${ctaSpring})`,
                         boxShadow: `0 0 40px ${props.primaryColor}33` }}
@@ -189,7 +189,7 @@ export const SocialPromo01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 60], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain }}
             />
         </AbsoluteFill>

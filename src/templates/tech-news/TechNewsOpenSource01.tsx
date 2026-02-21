@@ -81,7 +81,7 @@ export const TechNewsOpenSource01: React.FC<Props> = (props) => {
                             position: 'absolute',
                             left: `${drop.x}%`,
                             top: `${((frame * drop.speed + drop.delay * 20) % 120) - 10}%`,
-                            fontSize: 28,
+                            fontSize: 28 * scale,
                             fontFamily: 'monospace',
                             color: props.primaryColor,
                             opacity: 0.06,
@@ -105,11 +105,11 @@ export const TechNewsOpenSource01: React.FC<Props> = (props) => {
                 }}
             >
                 {/* Badge */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 24, opacity: fadeIn(frame, 0) }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 24 * scale, opacity: fadeIn(frame, 0) }}>
                     <div
                         style={{
                             padding: `${5 * scale}px ${14 * scale}px`,
-                            borderRadius: 12,
+                            borderRadius: 12 * scale,
                             background: `${props.primaryColor}20`,
                             border: `2px solid ${props.primaryColor}40`,
                         }}
@@ -180,10 +180,10 @@ export const TechNewsOpenSource01: React.FC<Props> = (props) => {
                                     display: 'flex',
                                     flexDirection: 'column',
                                     padding: `${16 * scale}px`,
-                                    borderRadius: 20,
+                                    borderRadius: 20 * scale,
                                     background: 'rgba(255,255,255,0.03)',
                                     border: `2px solid ${props.primaryColor}15`,
-                                    gap: 12,
+                                    gap: 12 * scale,
                                     transform: `scale(${cardSpring})`,
                                     opacity: fadeIn(frame, 35 + i * 8),
                                 }}
@@ -211,7 +211,7 @@ export const TechNewsOpenSource01: React.FC<Props> = (props) => {
                 <div
                     style={{
                         display: 'flex',
-                        gap: 24,
+                        gap: 24 * scale,
                         alignItems: 'center',
                         flexWrap: isPortrait ? 'wrap' : 'nowrap',
                         opacity: fadeIn(frame, 75),
@@ -224,7 +224,7 @@ export const TechNewsOpenSource01: React.FC<Props> = (props) => {
                         color={COLORS.accent}
                         fontWeight={600}
                     />
-                    <div style={{ width: 4, height: 8, borderRadius: '50%', background: '#ffffff33' }} />
+                    <div style={{ width: 4 * scale, height: 8 * scale, borderRadius: '50%', background: '#ffffff33' }} />
                     <EditableText
                         text={props.timestamp}
                         fontSize={32 * scale}
@@ -242,7 +242,7 @@ export const TechNewsOpenSource01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 60], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain,
                 }}
             />

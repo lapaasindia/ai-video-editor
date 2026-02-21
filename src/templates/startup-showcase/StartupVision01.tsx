@@ -136,7 +136,7 @@ export const StartupVision01: React.FC<Props> = (props) => {
                     <div style={{
                         opacity: fadeIn(frame, 10),
                         transform: `translateY(${interpolate(frame, [0, 30], [20, 0], { extrapolateRight: 'clamp' })}px)`,
-                        marginBottom: 40,
+                        marginBottom: 40 * scale,
                         textAlign: 'center',
                     }}>
                         <EditableText
@@ -154,7 +154,7 @@ export const StartupVision01: React.FC<Props> = (props) => {
                     <div style={{
                         opacity: fadeIn(frame, 30),
                         transform: `scale(${interpolate(frame, [30, 90], [1.1, 1], { extrapolateRight: 'clamp' })})`,
-                        marginBottom: 20,
+                        marginBottom: 20 * scale,
                         textAlign: 'center',
                     }}>
                         <EditableText
@@ -171,12 +171,12 @@ export const StartupVision01: React.FC<Props> = (props) => {
                     {/* Subtitle */}
                     <div style={{
                         opacity: fadeIn(frame, 60),
-                        marginTop: 40,
+                        marginTop: 40 * scale,
                         textAlign: 'center',
                     }}>
                         <div style={{
-                            width: 1,
-                            height: 60,
+                            width: 1 * scale,
+                            height: 60 * scale,
                             background: '#fff',
                             margin: '0 auto 20px',
                             opacity: 0.5

@@ -98,7 +98,7 @@ export const CompanyHistory01: React.FC<Props> = (props) => {
                     top: `${interpolate(frame % 120, [0, 10], [10, 100])}%`,
                     left: 0,
                     width: '100%',
-                    height: 50,
+                    height: 50 * scale,
                     background: 'rgba(255,255,255,0.2)',
                     backdropFilter: 'blur(4px) invert(0.8)',
                     transform: 'translateY(-50%)',
@@ -109,7 +109,7 @@ export const CompanyHistory01: React.FC<Props> = (props) => {
             {/* OSD (On Screen Display) */}
             <AbsoluteFill style={{ zIndex: 30, padding: isPortrait ? 56 : 80, fontFamily: interFont }}>
                 {/* Play Indicator */}
-                <div style={{ position: 'absolute', top: isPortrait ? 56 : 80, left: isPortrait ? 56 : 80, display: 'flex', alignItems: 'center', gap: 24 }}>
+                <div style={{ position: 'absolute', top: isPortrait ? 56 : 80, left: isPortrait ? 56 : 80, display: 'flex', alignItems: 'center', gap: 24 * scale }}>
                     <div style={{ fontSize: isPortrait ? 52 : 64, color: '#fff', textShadow: '2px 2px 0px #000' }}>▶ PLAY</div>
                     {frame % 60 < 30 && <div style={{ fontSize: isPortrait ? 52 : 64, color: '#fff', textShadow: '2px 2px 0px #000' }}>SP</div>}
                 </div>
@@ -117,7 +117,7 @@ export const CompanyHistory01: React.FC<Props> = (props) => {
                 {/* Date/Time */}
                 {props.showDate && (
                     <div style={{ position: 'absolute', bottom: isPortrait ? 56 : 80, right: isPortrait ? 56 : 80, textAlign: 'right' }}>
-                        <div style={{ fontSize: isPortrait ? 52 : 64, color: '#fff', textShadow: '2px 2px 0px #000', marginBottom: 8 }}>{props.date}</div>
+                        <div style={{ fontSize: isPortrait ? 52 : 64, color: '#fff', textShadow: '2px 2px 0px #000', marginBottom: 8 * scale }}>{props.date}</div>
                         <div style={{ fontSize: isPortrait ? 52 : 64, color: '#fff', textShadow: '2px 2px 0px #000' }}>{props.time}</div>
                     </div>
                 )}

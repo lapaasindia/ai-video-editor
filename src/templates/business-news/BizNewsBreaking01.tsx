@@ -91,15 +91,15 @@ export const BizNewsBreaking01: React.FC<Props> = (props) => {
                     display: 'flex',
                     alignItems: 'center',
                     paddingLeft: isPortrait ? 20 : 40,
-                    gap: 24,
+                    gap: 24 * scale,
                     transform: slideIn(frame, 'down', 0, 20, 10),
                     opacity: fadeIn(frame, 0, 10) }}
             >
                 {/* Pulsing dot */}
                 <div
                     style={{
-                        width: 12,
-                        height: 12,
+                        width: 12 * scale,
+                        height: 12 * scale,
                         borderRadius: '50%',
                         background: '#fff',
                         opacity: pulseOpacity,
@@ -126,7 +126,7 @@ export const BizNewsBreaking01: React.FC<Props> = (props) => {
                     width: '100%',
                     height: '100%',
                     padding: isPortrait ? '120px 80px 90px' : '0 80px 80px',
-                    gap: 32 }}
+                    gap: 32 * scale }}
             >
                 {/* Category pill */}
                 <div
@@ -134,7 +134,7 @@ export const BizNewsBreaking01: React.FC<Props> = (props) => {
                         display: 'inline-flex',
                         alignSelf: 'flex-start',
                         padding: `${6 * scale}px ${16 * scale}px`,
-                        borderRadius: 4,
+                        borderRadius: 4 * scale,
                         background: COLORS.accentLight,
                         opacity: fadeIn(frame, 15) }}
                 >
@@ -180,8 +180,8 @@ export const BizNewsBreaking01: React.FC<Props> = (props) => {
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 32,
-                        marginTop: 16,
+                        gap: 32 * scale,
+                        marginTop: 16 * scale,
                         opacity: fadeIn(frame, 45) }}
                 >
                     <EditableText
@@ -193,8 +193,8 @@ export const BizNewsBreaking01: React.FC<Props> = (props) => {
                     />
                     <div
                         style={{
-                            width: 4,
-                            height: 8,
+                            width: 4 * scale,
+                            height: 8 * scale,
                             borderRadius: '50%',
                             background: '#ffffff44' }}
                     />
@@ -217,7 +217,7 @@ export const BizNewsBreaking01: React.FC<Props> = (props) => {
                     width: `${interpolate(frame, [0, 60], [0, 100], {
                         extrapolateRight: 'clamp' })
                         }% `,
-                    height: 8,
+                    height: 8 * scale,
                     background: GRADIENTS.bgMain }}
             />
         </AbsoluteFill>

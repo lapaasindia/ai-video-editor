@@ -157,7 +157,7 @@ export const TextAnimGradient01: React.FC<Props> = (props) => {
                     color={COLORS.textSecondary}
                     fontWeight={400}
                     textAlign="center"
-                    style={{ marginTop: 48, opacity: subtitleOpacity }}
+                    style={{ marginTop: 48 * scale, opacity: subtitleOpacity }}
                 />
             </div>
 
@@ -168,7 +168,7 @@ export const TextAnimGradient01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 60], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: linearGradient(90, props.gradientStart, props.gradientMid, props.gradientEnd),
                 }}
             />

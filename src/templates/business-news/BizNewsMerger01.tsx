@@ -74,8 +74,8 @@ export const BizNewsMerger01: React.FC<Props> = (props) => {
                         top: '20%',
                         left: '50%',
                         transform: 'translateX(-50%)',
-                        width: 500,
-                        height: 500,
+                        width: 500 * scale,
+                        height: 500 * scale,
                         borderRadius: '50%',
                         background: `${props.primaryColor}0a`,
                         filter: 'blur(120px)',
@@ -101,14 +101,14 @@ export const BizNewsMerger01: React.FC<Props> = (props) => {
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 24,
+                        gap: 24 * scale,
                         opacity: fadeIn(frame, 0),
                     }}
                 >
                     <div
                         style={{
                             padding: `${6 * scale}px ${16 * scale}px`,
-                            borderRadius: 12,
+                            borderRadius: 12 * scale,
                             background: COLORS.accent,
                         }}
                     >
@@ -170,12 +170,12 @@ export const BizNewsMerger01: React.FC<Props> = (props) => {
                             flexDirection: 'column',
                             alignItems: 'center',
                             padding: `${24 * scale}px`,
-                            borderRadius: 32,
+                            borderRadius: 32 * scale,
                             background: 'rgba(255,255,255,0.04)',
                             border: '2px solid rgba(255,255,255,0.08)',
                             opacity: fadeIn(frame, 25),
                             transform: `translateX(${interpolate(mergeAnimation, [0, 1], [isPortrait ? 0 : -30, 0])}px)`,
-                            gap: 16,
+                            gap: 16 * scale,
                         }}
                     >
                         <EditableText
@@ -198,14 +198,14 @@ export const BizNewsMerger01: React.FC<Props> = (props) => {
                     {/* Plus / merge icon */}
                     <div
                         style={{
-                            width: 56,
-                            height: 56,
+                            width: 56 * scale,
+                            height: 56 * scale,
                             borderRadius: '50%',
                             background: GRADIENTS.bgMain,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: 48,
+                            fontSize: 48 * scale,
                             color: '#fff',
                             fontWeight: 800,
                             transform: `scale(${mergeAnimation}) rotate(${mergeAnimation * 180}deg)`,
@@ -223,12 +223,12 @@ export const BizNewsMerger01: React.FC<Props> = (props) => {
                             flexDirection: 'column',
                             alignItems: 'center',
                             padding: `${24 * scale}px`,
-                            borderRadius: 32,
+                            borderRadius: 32 * scale,
                             background: 'rgba(255,255,255,0.04)',
                             border: '2px solid rgba(255,255,255,0.08)',
                             opacity: fadeIn(frame, 30),
                             transform: `translateX(${interpolate(mergeAnimation, [0, 1], [isPortrait ? 0 : 30, 0])}px)`,
-                            gap: 16,
+                            gap: 16 * scale,
                         }}
                     >
                         <EditableText
@@ -270,7 +270,7 @@ export const BizNewsMerger01: React.FC<Props> = (props) => {
                             style={{
                                 textAlign: 'center',
                                 padding: `${12 * scale}px`,
-                                borderRadius: 20,
+                                borderRadius: 20 * scale,
                                 background: 'rgba(255,255,255,0.03)',
                                 border: '2px solid rgba(255,255,255,0.06)',
                             }}
@@ -299,7 +299,7 @@ export const BizNewsMerger01: React.FC<Props> = (props) => {
                 <div
                     style={{
                         display: 'flex',
-                        gap: 24,
+                        gap: 24 * scale,
                         alignItems: 'center',
                         flexWrap: isPortrait ? 'wrap' : 'nowrap',
                         opacity: fadeIn(frame, 75),
@@ -312,7 +312,7 @@ export const BizNewsMerger01: React.FC<Props> = (props) => {
                         color={COLORS.accent}
                         fontWeight={600}
                     />
-                    <div style={{ width: 4, height: 8, borderRadius: '50%', background: '#ffffff33' }} />
+                    <div style={{ width: 4 * scale, height: 8 * scale, borderRadius: '50%', background: '#ffffff33' }} />
                     <EditableText
                         text={props.timestamp}
                         fontSize={32 * scale}
@@ -330,7 +330,7 @@ export const BizNewsMerger01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 60], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain,
                 }}
             />

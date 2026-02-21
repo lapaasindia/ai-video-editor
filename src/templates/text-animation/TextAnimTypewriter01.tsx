@@ -83,7 +83,7 @@ export const TextAnimTypewriter01: React.FC<Props> = (props) => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: isPortrait ? '140px 80px' : '60px 120px',
-                    gap: 16,
+                    gap: 16 * scale,
                     textAlign: 'center',
                 }}
             >
@@ -108,9 +108,9 @@ export const TextAnimTypewriter01: React.FC<Props> = (props) => {
                                 width: isPortrait ? 3 : 4,
                                 height: isPortrait ? 62 : 94,
                                 background: props.cursorColor,
-                                marginLeft: 4,
+                                marginLeft: 4 * scale,
                                 opacity: cursorBlink,
-                                borderRadius: 2,
+                                borderRadius: 2 * scale,
                                 boxShadow: `0 0 12px ${props.cursorColor}88`,
                             }}
                         />
@@ -142,9 +142,9 @@ export const TextAnimTypewriter01: React.FC<Props> = (props) => {
                                     width: isPortrait ? 3 : 4,
                                     height: isPortrait ? 62 : 94,
                                     background: props.cursorColor,
-                                    marginLeft: 4,
+                                    marginLeft: 4 * scale,
                                     opacity: cursorBlink,
-                                    borderRadius: 2,
+                                    borderRadius: 2 * scale,
                                     boxShadow: `0 0 12px ${props.cursorColor}88`,
                                 }}
                             />
@@ -160,7 +160,7 @@ export const TextAnimTypewriter01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 80], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain,
                 }}
             />

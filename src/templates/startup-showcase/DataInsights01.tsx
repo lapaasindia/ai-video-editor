@@ -92,14 +92,14 @@ export const DataInsights01: React.FC<Props> = (props) => {
                 <>
                     <div style={{
                         position: 'absolute',
-                        top: 48,
-                        left: 36,
+                        top: 48 * scale,
+                        left: 36 * scale,
                         color: props.primaryColor,
                         fontSize: isPortrait ? 30 : 40,
                         lineHeight: 1.35,
                         background: '#00000080',
                         border: `2px solid ${props.primaryColor}55`,
-                        borderRadius: 16,
+                        borderRadius: 16 * scale,
                         padding: '14px 18px',
                     }}>
                         DATA_STREAM_01: {rollingNum}<br />
@@ -109,15 +109,15 @@ export const DataInsights01: React.FC<Props> = (props) => {
                     </div>
                     <div style={{
                         position: 'absolute',
-                        bottom: 48,
-                        right: 36,
+                        bottom: 48 * scale,
+                        right: 36 * scale,
                         color: props.primaryColor,
                         fontSize: isPortrait ? 30 : 40,
                         lineHeight: 1.35,
                         textAlign: 'right',
                         background: '#00000080',
                         border: `2px solid ${props.primaryColor}55`,
-                        borderRadius: 16,
+                        borderRadius: 16 * scale,
                         padding: '14px 18px',
                     }}>
                         SYS_STATUS: OK<br />
@@ -135,14 +135,14 @@ export const DataInsights01: React.FC<Props> = (props) => {
                     border: `2px solid ${props.primaryColor}80`,
                     position: 'relative',
                 }}>
-                    <div style={{ position: 'absolute', top: -1, left: -1, width: 20, height: 20, borderTop: `2px solid ${props.primaryColor}`, borderLeft: `2px solid ${props.primaryColor}` }} />
-                    <div style={{ position: 'absolute', top: -1, right: -1, width: 20, height: 20, borderTop: `2px solid ${props.primaryColor}`, borderRight: `2px solid ${props.primaryColor}` }} />
-                    <div style={{ position: 'absolute', bottom: -1, left: -1, width: 20, height: 20, borderBottom: `2px solid ${props.primaryColor}`, borderLeft: `2px solid ${props.primaryColor}` }} />
-                    <div style={{ position: 'absolute', bottom: -1, right: -1, width: 20, height: 20, borderBottom: `2px solid ${props.primaryColor}`, borderRight: `2px solid ${props.primaryColor}` }} />
+                    <div style={{ position: 'absolute', top: -1, left: -1, width: 20 * scale, height: 20 * scale, borderTop: `2px solid ${props.primaryColor}`, borderLeft: `2px solid ${props.primaryColor}` }} />
+                    <div style={{ position: 'absolute', top: -1, right: -1, width: 20 * scale, height: 20 * scale, borderTop: `2px solid ${props.primaryColor}`, borderRight: `2px solid ${props.primaryColor}` }} />
+                    <div style={{ position: 'absolute', bottom: -1, left: -1, width: 20 * scale, height: 20 * scale, borderBottom: `2px solid ${props.primaryColor}`, borderLeft: `2px solid ${props.primaryColor}` }} />
+                    <div style={{ position: 'absolute', bottom: -1, right: -1, width: 20 * scale, height: 20 * scale, borderBottom: `2px solid ${props.primaryColor}`, borderRight: `2px solid ${props.primaryColor}` }} />
 
                     {/* Crosshair */}
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', width: 20, height: 1, background: COLORS.accent, transform: 'translate(-50%, -50%)' }} />
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', width: 1, height: 20, background: COLORS.accent, transform: 'translate(-50%, -50%)' }} />
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', width: 20 * scale, height: 1 * scale, background: COLORS.accent, transform: 'translate(-50%, -50%)' }} />
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', width: 1 * scale, height: 20 * scale, background: COLORS.accent, transform: 'translate(-50%, -50%)' }} />
                 </div>
             </AbsoluteFill>
 
@@ -152,7 +152,7 @@ export const DataInsights01: React.FC<Props> = (props) => {
                 top: `${scanY}%`,
                 left: 0,
                 width: '100%',
-                height: 2,
+                height: 2 * scale,
                 background: COLORS.accent,
                 opacity: 0.5,
                 boxShadow: `0 0 10px ${props.primaryColor}`,
@@ -176,7 +176,7 @@ export const DataInsights01: React.FC<Props> = (props) => {
                         letterSpacing={4}
                     />
                 </div>
-                <div style={{ marginTop: 20, opacity: frame % 20 < 10 ? 1 : 0.5 }}>
+                <div style={{ marginTop: 20 * scale, opacity: frame % 20 < 10 ? 1 : 0.5 }}>
                     <EditableText
                         text={props.subtitle}
                         fontSize={isPortrait ? 42 : 58}

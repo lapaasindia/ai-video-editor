@@ -91,7 +91,7 @@ const StatCard: React.FC<{
                 textTransform="uppercase"
                 letterSpacing={FONT.wide}
                 textAlign="center"
-                style={{ marginTop: 16 }}
+                style={{ marginTop: 16 * scale }}
             />
         </div>
     );
@@ -129,8 +129,8 @@ export const CaseStudyStats01: React.FC<Props> = (props) => {
                     position: 'absolute',
                     top: '-20%',
                     right: '-10%',
-                    width: 1200,
-                    height: 1200,
+                    width: 1200 * scale,
+                    height: 1200 * scale,
                     borderRadius: '50%',
                     background: `${COLORS.accent}15`,
                     filter: 'blur(120px)',
@@ -141,8 +141,8 @@ export const CaseStudyStats01: React.FC<Props> = (props) => {
                     position: 'absolute',
                     bottom: '-20%',
                     left: '-10%',
-                    width: 1000,
-                    height: 1000,
+                    width: 1000 * scale,
+                    height: 1000 * scale,
                     borderRadius: '50%',
                     background: `${COLORS.accent}10`,
                     filter: 'blur(120px)',
@@ -233,7 +233,7 @@ export const CaseStudyStats01: React.FC<Props> = (props) => {
                     width: `${interpolate(frame, [0, 90], [0, 100], {
                         extrapolateRight: 'clamp',
                     })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.accentLine,
                 }}
             />

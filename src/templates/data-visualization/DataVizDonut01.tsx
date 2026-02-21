@@ -109,7 +109,7 @@ export const DataVizDonut01: React.FC<Props> = (props) => {
                         fontFamily={interFont}
                         color={COLORS.textSecondary}
                         fontWeight={400}
-                        style={{ marginTop: 16 }}
+                        style={{ marginTop: 16 * scale }}
                     />
                 </div>
 
@@ -165,7 +165,7 @@ export const DataVizDonut01: React.FC<Props> = (props) => {
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: 'center',
-                                gap: 4,
+                                gap: 4 * scale,
                                 opacity: fadeIn(frame, 40),
                             }}
                         >
@@ -198,15 +198,15 @@ export const DataVizDonut01: React.FC<Props> = (props) => {
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: 24,
+                                        gap: 24 * scale,
                                         opacity: fadeIn(frame, delay),
                                     }}
                                 >
                                     <div
                                         style={{
-                                            width: 14,
-                                            height: 14,
-                                            borderRadius: 4,
+                                            width: 14 * scale,
+                                            height: 14 * scale,
+                                            borderRadius: 4 * scale,
                                             background: seg.color,
                                             flexShrink: 0,
                                             boxShadow: `0 0 8px ${seg.color}44`,

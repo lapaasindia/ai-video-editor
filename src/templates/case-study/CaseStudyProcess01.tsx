@@ -77,8 +77,8 @@ export const CaseStudyProcess01: React.FC<Props> = (props) => {
                     position: 'absolute',
                     top: '40%',
                     left: '-10%',
-                    width: 500,
-                    height: 500,
+                    width: 500 * scale,
+                    height: 500 * scale,
                     borderRadius: '50%',
                     background: `${props.primaryColor}08`,
                     filter: 'blur(120px)',
@@ -166,7 +166,7 @@ export const CaseStudyProcess01: React.FC<Props> = (props) => {
                                         style={{
                                             width: 72 * scale,
                                             height: 72 * scale,
-                                            borderRadius: 28,
+                                            borderRadius: 28 * scale,
                                             background: linearGradient(135, `${props.primaryColor}20`, `${props.accentColor}10`),
                                             border: `2px solid ${props.primaryColor}40`,
                                             display: 'flex',
@@ -186,7 +186,7 @@ export const CaseStudyProcess01: React.FC<Props> = (props) => {
                                     </div>
 
                                     {/* Content */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 * scale, paddingTop: 4 * scale }}>
                                         <EditableText
                                             text={step.title}
                                             fontSize={isPortrait ? 50 : 44 * scale}
@@ -210,11 +210,11 @@ export const CaseStudyProcess01: React.FC<Props> = (props) => {
                                 {i < steps.length - 1 && (
                                     <div
                                         style={{
-                                            width: 2,
+                                            width: 2 * scale,
                                             height: isPortrait ? 12 : 20,
                                             marginLeft: 36 * scale,
                                             background: `${props.primaryColor}30`,
-                                            borderRadius: 1,
+                                            borderRadius: 1 * scale,
                                             transform: `scaleY(${lineProgress})`,
                                             transformOrigin: 'top',
                                         }}
@@ -234,7 +234,7 @@ export const CaseStudyProcess01: React.FC<Props> = (props) => {
                     bottom: 0,
                     left: 0,
                     width: `${interpolate(frame, [0, 90], [0, 100], { extrapolateRight: 'clamp' })}%`,
-                    height: 6,
+                    height: 6 * scale,
                     background: GRADIENTS.bgMain,
                 }}
             />
