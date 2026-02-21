@@ -170,13 +170,12 @@ export const ProjectPanel: React.FC = () => {
                                                 >📂 {((currentProject as any).projectDir || '').split('/').pop()}</span>
                                             </div>
                                         )}
-                                        <button
-                                            className="btn-text btn-sm"
-                                            style={{ marginTop: 8, width: '100%', textAlign: 'center', fontSize: 11, color: 'var(--accent-primary)' }}
+                                        <div
+                                            className="info-row-btn"
                                             onClick={() => setShowSettings(true)}
                                         >
                                             Edit Settings
-                                        </button>
+                                        </div>
                                     </div>
                                 </>
                             )}
