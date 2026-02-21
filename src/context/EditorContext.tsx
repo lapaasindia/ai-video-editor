@@ -359,10 +359,18 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             alert('Please create a project first');
             return;
         }
+        
+        // Check if there is already a video imported (successful or processing)
+        const hasVideo = media.some(m => m.type.toLowerCase() === 'video');
+        if (hasVideo) {
+            alert('Lapaas AI Editor currently only supports editing 1 video at a time per project. Please close this project and create a new one to edit a different video.');
+            return;
+        }
+
         if (fileInputRef.current) {
             fileInputRef.current.click();
         }
-    }, [currentProject]);
+    }, [currentProject, media]);
 
     const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
