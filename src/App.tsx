@@ -151,6 +151,28 @@ const MenuDropdown: React.FC<{ label: string; items: MenuItem[]; active?: boolea
     );
 };
 
+// Business Marketing Templates
+import './templates/business-marketing/DynamicSalesFunnel';
+import './templates/business-marketing/CustomerJourneyPath';
+import './templates/business-marketing/PricingComparisonTable';
+import './templates/business-marketing/FlywheelModel';
+import './templates/business-marketing/MarketingROICard';
+import './templates/business-marketing/TestimonialCarousel';
+import './templates/business-marketing/ClientLogoGrid';
+import './templates/business-marketing/TrustMetricsTicker';
+import './templates/business-marketing/SocialPostGrid';
+import './templates/business-marketing/CaseStudyCards';
+import './templates/business-marketing/FeatureListPopups';
+import './templates/business-marketing/StepByStepProcess';
+import './templates/business-marketing/UsVsThemTable';
+import './templates/business-marketing/BenefitCheckmarks';
+import './templates/business-marketing/TechStackOrbit';
+import './templates/business-marketing/VerticalTimeline';
+import './templates/business-marketing/SprintProgressBar';
+import './templates/business-marketing/DynamicBarChart';
+import './templates/business-marketing/MultiLinkOutro';
+import './templates/business-marketing/ResourceDownloadList';
+
 const EditorLayout = () => {
     const {
         currentProject, backendAvailable, saveProject, renderVideo, exportFCPXML,
