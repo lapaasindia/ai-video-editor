@@ -188,6 +188,18 @@ import './templates/business-marketing/ProductShowcase';
 import './templates/business-marketing/TeamQuote';
 import './templates/business-marketing/SplitScreenMetrics';
 
+// Platform Mockup Templates
+import './templates/business-marketing/GoogleSearchMockup';
+import './templates/business-marketing/InstagramAdMockup';
+import './templates/business-marketing/TwitterPostMockup';
+import './templates/business-marketing/LinkedInPostMockup';
+import './templates/business-marketing/FacebookAdMockup';
+import './templates/business-marketing/IMessageMockup';
+import './templates/business-marketing/AppStoreMockup';
+import './templates/business-marketing/ReviewMockup';
+import './templates/business-marketing/YouTubePlayerMockup';
+import './templates/business-marketing/RedditThreadMockup';
+
 const EditorLayout = () => {
     const {
         currentProject, backendAvailable, saveProject, renderVideo, exportFCPXML,
