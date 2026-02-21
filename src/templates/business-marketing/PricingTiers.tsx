@@ -70,7 +70,7 @@ export const PricingTiers: React.FC<Props> = ({
     
     // Dynamic vertical positioning based on number of rows to prevent overflow
     // When there are more rows, we need to move the grid higher UP the screen (smaller topPos)
-    const verticalOffset = -50;
+    const verticalOffset = rows > 1 ? -30 : -50;
     const topPos = rows > 1 ? '48%' : '50%';
 
     return (
