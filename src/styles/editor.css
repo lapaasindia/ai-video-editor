@@ -885,34 +885,45 @@ body {
 
 .template-categories {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  overflow-x: auto;
+  gap: 8px;
   margin-bottom: var(--spacing-md);
+  padding-bottom: 4px; /* Space for scrollbar */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.template-categories::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Opera */
 }
 
 .category-chip {
-  padding: 5px 10px;
-  background: transparent;
+  flex-shrink: 0;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
   border: 1px solid var(--panel-border);
-  border-radius: var(--radius-lg);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
 .category-chip:hover {
-  border-color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-color: var(--text-muted);
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.04);
 }
 
 .category-chip.active {
-  background: rgba(74, 222, 128, 0.12);
-  color: var(--accent-primary);
-  border-color: rgba(74, 222, 128, 0.4);
+  background: var(--accent-primary);
+  color: #000;
+  border-color: var(--accent-primary);
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(74, 222, 128, 0.2);
 }
 
 /* Template Card */
