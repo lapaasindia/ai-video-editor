@@ -304,11 +304,11 @@ function App() {
             <EditorProvider>
                 <div className="app-container">
                     <EditorLayout />
-                    <LogViewer />
                 </div>
             </EditorProvider>
         </ErrorBoundary>
     );
 }
 
+export default App;
 export default App;
