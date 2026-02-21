@@ -57,6 +57,39 @@ const withBackgroundControls = (
   return Wrapped;
 };
 
+const CATEGORY_FOLDER_NAMES: Record<TemplateCategory, string> = {
+  'case-study': 'CaseStudy',
+  'business-news': 'BusinessNews',
+  'tech-news': 'TechNews',
+  'data-visualization': 'DataVisualization',
+  'text-animation': 'TextAnimation',
+  'logo-reveal': 'LogoReveal',
+  'social-media-promo': 'SocialMediaPromo',
+  'listicle-ranking': 'ListicleRanking',
+  'lower-thirds': 'LowerThirds',
+  'startup-showcase': 'StartupShowcase',
+  'social-hooks': 'SocialHooks',
+  'business-marketing': 'BusinessMarketing',
+  'platform-mockups': 'PlatformMockups',
+};
+
+function groupByCategory(templates: TemplateMetadata[]): Record<TemplateCategory, TemplateMetadata[]> {
+  const grouped = getCategories().reduce(
+    (acc, cat) => {
+      acc[cat] = [];
+      return acc;
+    },
+    {} as Record<TemplateCategory, TemplateMetadata[]>,
+  );
+
+  for (const t of templates) {
+    if (grouped[t.category]) {
+      grouped[t.category].push(t);
+    }
+  }
+  return grouped;
+}
+
 // ─── Import all templates (side-effect: each calls registerTemplate) ────
 
 // Case Study
