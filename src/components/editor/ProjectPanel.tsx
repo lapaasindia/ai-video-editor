@@ -226,8 +226,10 @@ export const ProjectPanel: React.FC = () => {
                                                     </svg>
                                                 )}
                                             </div>
-                                            <span className="media-name" title={item.path} style={item.status === 'error' ? { color: '#e74c3c' } : {}}>{item.name}</span>
-                                            {item.status === 'error' && <span className="media-badge" title="Import failed" style={{ background: '#e74c3c' }}>!</span>}
+                                            <span className="media-name" title={item.name} style={item.status === 'error' ? { color: '#e74c3c' } : {}}>
+                                                {item.name}
+                                            </span>
+                                            {item.status === 'error' && <span className="media-badge" title="Import failed" style={{ background: '#e74c3c', color: 'white' }}>!</span>}
                                             {item.proxyPath && <span className="media-badge" title="Proxy Ready">P</span>}
                                         </div>
                                     ))
