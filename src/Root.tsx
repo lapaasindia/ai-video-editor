@@ -60,117 +60,114 @@ const withBackgroundControls = (
 // ─── Import all templates (side-effect: each calls registerTemplate) ────
 
 // Case Study
-import './templates/case-study/CaseStudyHero01';
-import './templates/case-study/CaseStudyStats01';
-import './templates/case-study/CaseStudyTimeline01';
-import './templates/case-study/CaseStudyBeforeAfter01';
-import './templates/case-study/CaseStudyQuote01';
-import './templates/case-study/CaseStudyProblemSolution01';
-import './templates/case-study/CaseStudyResults01';
-import './templates/case-study/CaseStudyCompanyProfile01';
-import './templates/case-study/CaseStudyProcess01';
-import './templates/case-study/CaseStudyROI01';
-import './templates/case-study/CaseStudyTestimonialGrid01';
-
-// Business News
+import './templates/business-marketing/AppStoreMockup';
+import './templates/business-marketing/BeforeAfterSplit';
+import './templates/business-marketing/BenefitCheckmarks';
+import './templates/business-marketing/CaseStudyCards';
+import './templates/business-marketing/ClientLogoGrid';
+import './templates/business-marketing/ContactInfoCard';
+import './templates/business-marketing/CustomerJourneyPath';
+import './templates/business-marketing/DynamicBarChart';
+import './templates/business-marketing/DynamicDonutChart';
+import './templates/business-marketing/DynamicSalesFunnel';
+import './templates/business-marketing/FacebookAdMockup';
+import './templates/business-marketing/FeatureListPopups';
+import './templates/business-marketing/FinancialBarChart';
+import './templates/business-marketing/FlywheelModel';
+import './templates/business-marketing/GoogleSearchMockup';
+import './templates/business-marketing/GrowthLineGraph';
+import './templates/business-marketing/HistoryMilestones';
+import './templates/business-marketing/HorizontalRoadmap';
+import './templates/business-marketing/IMessageMockup';
+import './templates/business-marketing/InstagramAdMockup';
+import './templates/business-marketing/InteractivePoll';
+import './templates/business-marketing/LinkedInPostMockup';
+import './templates/business-marketing/MarketShareBlocks';
+import './templates/business-marketing/MarketingROICard';
+import './templates/business-marketing/MultiLinkOutro';
+import './templates/business-marketing/PricingComparisonTable';
+import './templates/business-marketing/PricingTiers';
+import './templates/business-marketing/ProductFeaturesGrid';
+import './templates/business-marketing/ProductShowcase';
+import './templates/business-marketing/RedditThreadMockup';
+import './templates/business-marketing/ResourceDownloadList';
+import './templates/business-marketing/ReviewMockup';
+import './templates/business-marketing/SocialPostGrid';
+import './templates/business-marketing/SpeakerRoster';
+import './templates/business-marketing/SplitScreenMetrics';
+import './templates/business-marketing/SponsorBanner';
+import './templates/business-marketing/SprintProgressBar';
+import './templates/business-marketing/StatGrid3x3';
+import './templates/business-marketing/StepByStepProcess';
+import './templates/business-marketing/TeamQuote';
+import './templates/business-marketing/TeamRosterGrid';
+import './templates/business-marketing/TechStackOrbit';
+import './templates/business-marketing/TestimonialCarousel';
+import './templates/business-marketing/TrustMetricsTicker';
+import './templates/business-marketing/TwitterPostMockup';
+import './templates/business-marketing/UsVsThemTable';
+import './templates/business-marketing/VerticalTimeline';
+import './templates/business-marketing/WebinarAgenda';
+import './templates/business-marketing/YouTubePlayerMockup';
 import './templates/business-news/BizNewsBreaking01';
-import './templates/business-news/BizNewsMarketUpdate01';
 import './templates/business-news/BizNewsEarnings01';
-import './templates/business-news/BizNewsMerger01';
 import './templates/business-news/BizNewsIPO01';
+import './templates/business-news/BizNewsMarketUpdate01';
+import './templates/business-news/BizNewsMerger01';
 import './templates/business-news/BizNewsPolicy01';
-
-// Tech News
-import './templates/tech-news/TechNewsLaunch01';
-import './templates/tech-news/TechNewsFunding01';
-import './templates/tech-news/TechNewsAIUpdate01';
-import './templates/tech-news/TechNewsOpenSource01';
-import './templates/tech-news/TechNewsSecurity01';
-
-// Data Visualization
+import './templates/case-study/CaseStudyBeforeAfter01';
+import './templates/case-study/CaseStudyCompanyProfile01';
+import './templates/case-study/CaseStudyHero01';
+import './templates/case-study/CaseStudyProblemSolution01';
+import './templates/case-study/CaseStudyProcess01';
+import './templates/case-study/CaseStudyQuote01';
+import './templates/case-study/CaseStudyROI01';
+import './templates/case-study/CaseStudyResults01';
+import './templates/case-study/CaseStudyStats01';
+import './templates/case-study/CaseStudyTestimonialGrid01';
+import './templates/case-study/CaseStudyTimeline01';
 import './templates/data-visualization/DataVizBarChart01';
-import './templates/data-visualization/DataVizDonut01';
 import './templates/data-visualization/DataVizCounter01';
-
-// Text Animation
-import './templates/text-animation/TextAnimGradient01';
-import './templates/text-animation/TextAnimTypewriter01';
-
-// Logo Reveal
-import './templates/logo-reveal/LogoRevealMinimal01';
-import './templates/logo-reveal/LogoRevealGlitch01';
-
-// Social Media Promo
-import './templates/social-media-promo/SocialPromo01';
-import './templates/social-media-promo/SocialPromoEvent01';
-
-// Listicle / Ranking
+import './templates/data-visualization/DataVizDonut01';
 import './templates/listicle-ranking/ListicleRanking01';
-
-// Lower Thirds
+import './templates/logo-reveal/LogoRevealGlitch01';
+import './templates/logo-reveal/LogoRevealMinimal01';
 import './templates/lower-thirds/LowerThirds01';
 import './templates/lower-thirds/LowerThirdsTopic01';
-
-// Startup Showcase
-import './templates/startup-showcase/StartupVision01';
-import './templates/startup-showcase/BoldPitch01';
-import './templates/startup-showcase/ProductLaunch01';
-import './templates/startup-showcase/TechInnovation01';
-import './templates/startup-showcase/CreativeStory01';
-import './templates/startup-showcase/DataInsights01';
-import './templates/startup-showcase/FounderJourney01';
-import './templates/startup-showcase/LifestyleBrand01';
-import './templates/startup-showcase/CompanyHistory01';
-import './templates/startup-showcase/AppDemo01';
-
-// Social Hooks
+import './templates/social-hooks/ArticleHighlight01';
+import './templates/social-hooks/AutoWhoosh01';
+import './templates/social-hooks/BilingualOutro01';
+import './templates/social-hooks/CensorStickers01';
+import './templates/social-hooks/CollagePiP01';
 import './templates/social-hooks/CutoutHook01';
 import './templates/social-hooks/HeadlineCard01';
 import './templates/social-hooks/LightLeakSmash01';
-import './templates/social-hooks/ZoomReveal01';
-import './templates/social-hooks/CollagePiP01';
-import './templates/social-hooks/CensorStickers01';
 import './templates/social-hooks/MoneyRain01';
-import './templates/social-hooks/ArticleHighlight01';
 import './templates/social-hooks/PhoneCameo01';
-import './templates/social-hooks/BilingualOutro01';
 import './templates/social-hooks/ProofTiles01';
 import './templates/social-hooks/SplitCompare01';
 import './templates/social-hooks/StampVerdict01';
 import './templates/social-hooks/TimelineSteps01';
-import './templates/social-hooks/AutoWhoosh01';
-
-// ─── Helpers ────────────────────────────────────────────────
-
-// Remotion Folder names only allow a-z, A-Z, 0-9, -
-const CATEGORY_FOLDER_NAMES: Record<TemplateCategory, string> = {
-  'case-study': 'Case-Study',
-  'business-news': 'Business-News',
-  'tech-news': 'Tech-News',
-  'data-visualization': 'Data-Visualization',
-  'text-animation': 'Text-Animation',
-  'logo-reveal': 'Logo-Reveal',
-  'social-media-promo': 'Social-Media-Promo',
-  'listicle-ranking': 'Listicle-Ranking',
-  'lower-thirds': 'Lower-Thirds',
-  'startup-showcase': 'Startup-Showcase',
-  'social-hooks': 'Social-Hooks',
-};
-
-function groupByCategory(
-  templates: TemplateMetadata[],
-): Record<TemplateCategory, TemplateMetadata[]> {
-  const grouped = {} as Record<TemplateCategory, TemplateMetadata[]>;
-  for (const cat of getCategories()) {
-    grouped[cat] = [];
-  }
-  for (const t of templates) {
-    grouped[t.category].push(t);
-  }
-  return grouped;
-}
-
-// ─── Root Component ─────────────────────────────────────────
+import './templates/social-hooks/ZoomReveal01';
+import './templates/social-media-promo/SocialPromo01';
+import './templates/social-media-promo/SocialPromoEvent01';
+import './templates/startup-showcase/AppDemo01';
+import './templates/startup-showcase/BoldPitch01';
+import './templates/startup-showcase/CompanyHistory01';
+import './templates/startup-showcase/CreativeStory01';
+import './templates/startup-showcase/DataInsights01';
+import './templates/startup-showcase/FounderJourney01';
+import './templates/startup-showcase/LifestyleBrand01';
+import './templates/startup-showcase/ProductLaunch01';
+import './templates/startup-showcase/StartupVision01';
+import './templates/startup-showcase/TechInnovation01';
+import './templates/tech-news/TechNewsAIUpdate01';
+import './templates/tech-news/TechNewsFunding01';
+import './templates/tech-news/TechNewsLaunch01';
+import './templates/tech-news/TechNewsOpenSource01';
+import './templates/tech-news/TechNewsSecurity01';
+import './templates/text-animation/TextAnimGradient01';
+import './templates/text-animation/TextAnimTypewriter01';
 export const RemotionRoot: React.FC = () => {
   const registry = getTemplateRegistry();
   const grouped = groupByCategory(registry);
