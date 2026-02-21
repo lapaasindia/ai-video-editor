@@ -32,7 +32,8 @@ export const creativeStorySchema = z.object({
 type Props = z.infer<typeof creativeStorySchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CreativeStory01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const CreativeStory01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const rawFrame = useCurrentFrame();
     useVideoConfig();
     const isPortrait = useIsPortrait();

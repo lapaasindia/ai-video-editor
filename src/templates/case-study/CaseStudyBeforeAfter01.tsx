@@ -35,7 +35,8 @@ export const caseStudyBeforeAfterSchema = z.object({
 type Props = z.infer<typeof caseStudyBeforeAfterSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const isPortrait = useIsPortrait();
     const scale = useResponsive(1, 1);

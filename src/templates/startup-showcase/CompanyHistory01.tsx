@@ -35,7 +35,8 @@ export const companyHistorySchema = z.object({
 type Props = z.infer<typeof companyHistorySchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CompanyHistory01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const CompanyHistory01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     useVideoConfig();
     const isPortrait = useIsPortrait();

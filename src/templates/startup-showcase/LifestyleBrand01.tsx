@@ -36,7 +36,8 @@ export const lifestyleBrandSchema = z.object({
 type Props = z.infer<typeof lifestyleBrandSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const LifestyleBrand01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const LifestyleBrand01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { width, height } = useVideoConfig();
     const isPortrait = useIsPortrait();

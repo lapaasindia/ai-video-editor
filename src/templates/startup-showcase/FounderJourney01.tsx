@@ -36,7 +36,8 @@ export const founderJourneySchema = z.object({
 type Props = z.infer<typeof founderJourneySchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const FounderJourney01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const FounderJourney01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     useVideoConfig();
     const isPortrait = useIsPortrait();

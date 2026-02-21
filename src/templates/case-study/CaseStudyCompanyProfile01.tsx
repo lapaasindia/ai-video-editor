@@ -38,7 +38,8 @@ export const caseStudyCompanyProfileSchema = z.object({
 type Props = z.infer<typeof caseStudyCompanyProfileSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CaseStudyCompanyProfile01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const CaseStudyCompanyProfile01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

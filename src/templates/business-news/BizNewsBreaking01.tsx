@@ -34,7 +34,8 @@ export const bizNewsBreakingSchema = z.object({
 type Props = z.infer<typeof bizNewsBreakingSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const BizNewsBreaking01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const BizNewsBreaking01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const isPortrait = useIsPortrait();
     const scale = useResponsive(1, 1);

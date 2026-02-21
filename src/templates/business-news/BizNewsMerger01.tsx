@@ -43,7 +43,8 @@ export const bizNewsMergerSchema = z.object({
 type Props = z.infer<typeof bizNewsMergerSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const BizNewsMerger01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const BizNewsMerger01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

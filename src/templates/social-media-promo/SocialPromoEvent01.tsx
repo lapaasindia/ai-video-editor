@@ -38,7 +38,8 @@ export const socialPromoEventSchema = z.object({
 type Props = z.infer<typeof socialPromoEventSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const SocialPromoEvent01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const SocialPromoEvent01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

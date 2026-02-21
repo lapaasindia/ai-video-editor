@@ -40,7 +40,8 @@ export const caseStudyTestimonialGridSchema = z.object({
 type Props = z.infer<typeof caseStudyTestimonialGridSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CaseStudyTestimonialGrid01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const CaseStudyTestimonialGrid01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

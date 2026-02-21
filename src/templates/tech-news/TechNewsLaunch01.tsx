@@ -40,7 +40,8 @@ export const techNewsLaunchSchema = z.object({
 type Props = z.infer<typeof techNewsLaunchSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const TechNewsLaunch01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
+export const TechNewsLaunch01: React.FC<Props> = (props) => {
+    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();
