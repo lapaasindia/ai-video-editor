@@ -190,6 +190,8 @@ const EditorContext = createContext<EditorContextType | null>(null);
 export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { invokeCommand, isTauri } = useTauri();
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     const DEFAULT_TRACKS: Track[] = [
         { id: 'track-1', type: 'video', name: 'Video 1', clips: [] },
         { id: 'track-2', type: 'audio', name: 'Audio 1', clips: [] },
