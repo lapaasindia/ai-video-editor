@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const splitScreenMetricsSchema = z.object({
     leftTitle: z.string().default('Industry Avg'),
@@ -19,8 +24,8 @@ export const splitScreenMetricsSchema = z.object({
     rightMetric: z.string().default('2 hours'),
     leftSub: z.string().default('Time to value'),
     rightSub: z.string().default('Time to value'),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     leftColor: z.string().default('#ef4444'),
     rightColor: z.string().default('#10b981'),
 });
@@ -43,6 +48,7 @@ export const SplitScreenMetrics: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const popL = spring({ frame: frame - 15, fps, config: { damping: 14, mass: 1.2 } });
@@ -53,7 +59,7 @@ export const SplitScreenMetrics: React.FC<Props> = ({
     const halfHeight = height / 2;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {isPortrait ? (
                 // Top / Bottom Split
                 <>
@@ -68,8 +74,8 @@ export const SplitScreenMetrics: React.FC<Props> = ({
                         <div style={{ fontSize: 28 * scale, fontWeight: 700, color: leftColor, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 20 * scale }}>
                             {leftTitle}
                         </div>
-                        <EditableText text={leftMetric} style={{ fontFamily: montserratFont, fontWeight: 900, fontSize: 80 * scale, margin: 0, color: '#fff', textShadow: `0 4px 20px ${leftColor}40` }} />
-                        <div style={{ fontSize: 24 * scale, color: 'rgba(255,255,255,0.6)', marginTop: 10 * scale }}>{leftSub}</div>
+                        <EditableText text={leftMetric} style={{ fontFamily: interFont, fontWeight: 900, fontSize: 80 * scale, margin: 0, color: '#fff', textShadow: `0 4px 20px ${leftColor}40` }} />
+                        <div style={{ fontSize: 24 * scale, color: COLORS.textSecondary, marginTop: 10 * scale }}>{leftSub}</div>
                     </div>
                     
                     <div style={{
@@ -82,7 +88,7 @@ export const SplitScreenMetrics: React.FC<Props> = ({
                         <div style={{ fontSize: 28 * scale, fontWeight: 700, color: rightColor, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 20 * scale }}>
                             {rightTitle}
                         </div>
-                        <EditableText text={rightMetric} style={{ fontFamily: montserratFont, fontWeight: 900, fontSize: 100 * scale, margin: 0, color: '#fff', textShadow: `0 4px 30px ${rightColor}60` }} />
+                        <EditableText text={rightMetric} style={{ fontFamily: interFont, fontWeight: 900, fontSize: 100 * scale, margin: 0, color: '#fff', textShadow: `0 4px 30px ${rightColor}60` }} />
                         <div style={{ fontSize: 24 * scale, color: 'rgba(255,255,255,0.8)', marginTop: 10 * scale }}>{rightSub}</div>
                     </div>
                     
@@ -91,7 +97,7 @@ export const SplitScreenMetrics: React.FC<Props> = ({
                         position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
                         width: 80 * scale, height: 80 * scale, borderRadius: '50%', backgroundColor: textColor, color: backgroundColor,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 24 * scale, fontWeight: 900, fontFamily: montserratFont,
+                        fontSize: 24 * scale, fontWeight: 900, fontFamily: interFont,
                         boxShadow: '0 10px 30px rgba(0,0,0,0.5)', zIndex: 10,
                         opacity: interpolate(frame - 45, [0, 10], [0, 1], { extrapolateRight: 'clamp' }),
                     }}>
@@ -112,8 +118,8 @@ export const SplitScreenMetrics: React.FC<Props> = ({
                         <div style={{ fontSize: 32 * scale, fontWeight: 700, color: leftColor, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 30 * scale }}>
                             {leftTitle}
                         </div>
-                        <EditableText text={leftMetric} style={{ fontFamily: montserratFont, fontWeight: 900, fontSize: 100 * scale, margin: 0, color: '#fff', textShadow: `0 4px 20px ${leftColor}40` }} />
-                        <div style={{ fontSize: 28 * scale, color: 'rgba(255,255,255,0.6)', marginTop: 16 * scale }}>{leftSub}</div>
+                        <EditableText text={leftMetric} style={{ fontFamily: interFont, fontWeight: 900, fontSize: 100 * scale, margin: 0, color: '#fff', textShadow: `0 4px 20px ${leftColor}40` }} />
+                        <div style={{ fontSize: 28 * scale, color: COLORS.textSecondary, marginTop: 16 * scale }}>{leftSub}</div>
                     </div>
                     
                     <div style={{
@@ -126,7 +132,7 @@ export const SplitScreenMetrics: React.FC<Props> = ({
                         <div style={{ fontSize: 32 * scale, fontWeight: 700, color: rightColor, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 30 * scale }}>
                             {rightTitle}
                         </div>
-                        <EditableText text={rightMetric} style={{ fontFamily: montserratFont, fontWeight: 900, fontSize: 120 * scale, margin: 0, color: '#fff', textShadow: `0 4px 40px ${rightColor}60` }} />
+                        <EditableText text={rightMetric} style={{ fontFamily: interFont, fontWeight: 900, fontSize: 120 * scale, margin: 0, color: '#fff', textShadow: `0 4px 40px ${rightColor}60` }} />
                         <div style={{ fontSize: 28 * scale, color: 'rgba(255,255,255,0.8)', marginTop: 16 * scale }}>{rightSub}</div>
                     </div>
 
@@ -135,7 +141,7 @@ export const SplitScreenMetrics: React.FC<Props> = ({
                         position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
                         width: 100 * scale, height: 100 * scale, borderRadius: '50%', backgroundColor: textColor, color: backgroundColor,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 32 * scale, fontWeight: 900, fontFamily: montserratFont,
+                        fontSize: 32 * scale, fontWeight: 900, fontFamily: interFont,
                         boxShadow: '0 10px 40px rgba(0,0,0,0.5)', zIndex: 10,
                         opacity: interpolate(frame - 45, [0, 10], [0, 1], { extrapolateRight: 'clamp' }),
                     }}>

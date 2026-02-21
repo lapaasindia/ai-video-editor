@@ -76,7 +76,7 @@ export const DataVizCounter01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(COLORS.bg, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
             }}
         >

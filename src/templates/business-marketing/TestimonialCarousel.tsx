@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const testimonialCarouselSchema = z.object({
     title: z.string().default('What Our Clients Say'),
@@ -21,6 +26,7 @@ export const testimonialCarouselSchema = z.object({
         text: z.string(),
         avatarUrl: z.string(),
         rating: z.number().min(1).max(5).default(5),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { 
             name: 'Sarah Jenkins', 
@@ -44,10 +50,10 @@ export const testimonialCarouselSchema = z.object({
             rating: 4
         }
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    cardBgColor: z.string().default('#1e293b'),
-    accentColor: z.string().default('#3b82f6'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof testimonialCarouselSchema>;
@@ -64,6 +70,7 @@ export const TestimonialCarousel: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -99,7 +106,7 @@ export const TestimonialCarousel: React.FC<Props> = ({
     const activeTestimonial = testimonials[activeIndex];
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -113,7 +120,7 @@ export const TestimonialCarousel: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -134,7 +141,7 @@ export const TestimonialCarousel: React.FC<Props> = ({
                 borderRadius: 30 * scale,
                 padding: isPortrait ? 50 * scale : 80 * scale,
                 boxShadow: '0 30px 60px rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.05)',
+                border: `1px solid ${COLORS.border}`,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -158,7 +165,7 @@ export const TestimonialCarousel: React.FC<Props> = ({
                     fontWeight: 500,
                     lineHeight: 1.4,
                     marginBottom: 50 * scale,
-                    color: 'rgba(255,255,255,0.9)',
+                    color: COLORS.textPrimary,
                 }}>
                     {activeTestimonial?.text}
                 </div>
@@ -188,7 +195,7 @@ export const TestimonialCarousel: React.FC<Props> = ({
                     )}
                     <div style={{ textAlign: 'left' }}>
                         <div style={{ fontSize: 24 * scale, fontWeight: 700 }}>{activeTestimonial?.name}</div>
-                        <div style={{ fontSize: 18 * scale, color: 'rgba(255,255,255,0.6)' }}>{activeTestimonial?.role}</div>
+                        <div style={{ fontSize: 18 * scale, color: COLORS.textSecondary }}>{activeTestimonial?.role}</div>
                     </div>
                 </div>
             </div>

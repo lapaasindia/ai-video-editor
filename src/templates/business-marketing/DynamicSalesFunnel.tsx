@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const dynamicSalesFunnelSchema = z.object({
     title: z.string().default('Sales Funnel Breakdown'),
@@ -19,14 +24,15 @@ export const dynamicSalesFunnelSchema = z.object({
         label: z.string(),
         value: z.string(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { label: 'Awareness', value: '100k', color: '#3b82f6' },
         { label: 'Interest', value: '25k', color: '#8b5cf6' },
         { label: 'Decision', value: '5k', color: '#a855f7' },
         { label: 'Action', value: '1k', color: '#d946ef' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
 });
 
 type Props = z.infer<typeof dynamicSalesFunnelSchema>;
@@ -42,6 +48,7 @@ export const DynamicSalesFunnel: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -57,7 +64,7 @@ export const DynamicSalesFunnel: React.FC<Props> = ({
     const gap = 10 * scale;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, padding: 60 * scale, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), padding: 60 * scale, fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -71,7 +78,7 @@ export const DynamicSalesFunnel: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,

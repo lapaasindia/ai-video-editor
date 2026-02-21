@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const speakerRosterSchema = z.object({
     title: z.string().default('Hosted By'),
@@ -22,14 +27,15 @@ export const speakerRosterSchema = z.object({
         company: z.string(),
         avatarUrl: z.string(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { name: 'Dr. Emily Chen', title: 'Chief AI Officer', company: 'TechNova', avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300', color: '#3b82f6' },
         { name: 'James Wilson', title: 'VP of Engineering', company: 'GlobalData', avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300', color: '#10b981' },
         { name: 'Sarah Patel', title: 'Director of Product', company: 'InnovateInc', avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=300', color: '#f59e0b' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    cardBgColor: z.string().default('#1e293b'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
 });
 
 type Props = z.infer<typeof speakerRosterSchema>;
@@ -46,6 +52,7 @@ export const SpeakerRoster: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -61,7 +68,7 @@ export const SpeakerRoster: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -75,7 +82,7 @@ export const SpeakerRoster: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -177,7 +184,7 @@ export const SpeakerRoster: React.FC<Props> = ({
                             <div style={{
                                 fontSize: (isPortrait ? 28 : 32) * scale,
                                 fontWeight: 800,
-                                fontFamily: montserratFont,
+                                fontFamily: interFont,
                                 color: '#fff',
                                 marginBottom: 12 * scale,
                             }}>
@@ -195,7 +202,7 @@ export const SpeakerRoster: React.FC<Props> = ({
 
                             <div style={{
                                 fontSize: (isPortrait ? 16 : 18) * scale,
-                                color: 'rgba(255,255,255,0.6)',
+                                color: COLORS.textSecondary,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.05em',
                             }}>

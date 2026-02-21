@@ -28,9 +28,9 @@ export const moneyRainSchema = z.object({
     backgroundImageUrl: z.string().default('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1920'),
     bigNumber: z.string().default('$47M'),
     perYearText: z.string().default('per year'),
-    primaryColor: z.string().default('#00E676'),
+    primaryColor: z.string().default(COLORS.accent),
     burstColor: z.string().default('#FFD700'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    backgroundColor: z.string().default(COLORS.bg),
     showVignette: z.boolean().default(true),
     moneyCount: z.number().default(30),
 });

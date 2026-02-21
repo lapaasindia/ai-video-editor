@@ -30,6 +30,7 @@ export const dataInsightsSchema = z.object({
     secondaryColor: z.string().default(COLORS.accentDark),
     showNumbers: z.boolean().default(true),
     showGrid: z.boolean().default(true),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof dataInsightsSchema>;
@@ -54,7 +55,7 @@ export const DataInsights01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(COLORS.bg, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
                 fontFamily: interFont,
             }}

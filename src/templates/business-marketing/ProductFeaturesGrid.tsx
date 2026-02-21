@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const productFeaturesGridSchema = z.object({
     title: z.string().default('Why Choose Us'),
@@ -21,15 +26,16 @@ export const productFeaturesGridSchema = z.object({
         desc: z.string(),
         iconUrl: z.string(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { title: 'Global Reach', desc: 'Deploy to 120+ edge locations instantly.', iconUrl: 'https://cdn-icons-png.flaticon.com/512/888/888879.png', color: '#3b82f6' },
         { title: 'Zero Downtime', desc: 'Our architecture ensures you never go offline.', iconUrl: 'https://cdn-icons-png.flaticon.com/512/888/888885.png', color: '#10b981' },
         { title: 'Auto Scaling', desc: 'Handles sudden traffic spikes without breaking a sweat.', iconUrl: 'https://cdn-icons-png.flaticon.com/512/888/888891.png', color: '#f59e0b' },
         { title: 'Ironclad Security', desc: 'Enterprise-grade encryption for all your data.', iconUrl: 'https://cdn-icons-png.flaticon.com/512/888/888898.png', color: '#ef4444' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    cardBgColor: z.string().default('#1e293b'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
 });
 
 type Props = z.infer<typeof productFeaturesGridSchema>;
@@ -46,6 +52,7 @@ export const ProductFeaturesGrid: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -61,7 +68,7 @@ export const ProductFeaturesGrid: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -75,7 +82,7 @@ export const ProductFeaturesGrid: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -155,7 +162,7 @@ export const ProductFeaturesGrid: React.FC<Props> = ({
                                 <div style={{
                                     fontSize: (isPortrait ? 24 : 28) * scale,
                                     fontWeight: 800,
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     color: '#fff',
                                     marginBottom: 8 * scale,
                                 }}>
@@ -164,7 +171,7 @@ export const ProductFeaturesGrid: React.FC<Props> = ({
                                 
                                 <div style={{
                                     fontSize: (isPortrait ? 16 : 18) * scale,
-                                    color: 'rgba(255,255,255,0.7)',
+                                    color: COLORS.textSecondary,
                                     lineHeight: 1.4,
                                 }}>
                                     {feature.desc}

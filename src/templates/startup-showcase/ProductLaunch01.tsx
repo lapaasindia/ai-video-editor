@@ -31,6 +31,7 @@ export const productLaunchSchema = z.object({
     secondaryColor: z.string().default(COLORS.accentDark), // Magenta
     showGlitch: z.boolean().default(true),
     enableFlash: z.boolean().default(true),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof productLaunchSchema>;
@@ -66,7 +67,7 @@ export const ProductLaunch01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(COLORS.bg, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
             }}
         >

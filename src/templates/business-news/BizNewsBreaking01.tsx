@@ -29,6 +29,7 @@ export const bizNewsBreakingSchema = z.object({
     imageUrl: z.string().default('https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800'),
     category: z.string().default('MERGERS & ACQUISITIONS'),
     primaryColor: z.string().default(COLORS.accent),
+    backgroundColor: z.string().default(COLORS.bg),
     accentColor: z.string().default(COLORS.accentLight) });
 
 type Props = z.infer<typeof bizNewsBreakingSchema>;
@@ -47,7 +48,7 @@ export const BizNewsBreaking01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(COLORS.bg, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
             }}
         >

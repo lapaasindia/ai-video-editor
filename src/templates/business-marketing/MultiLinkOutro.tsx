@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const multiLinkOutroSchema = z.object({
     title: z.string().default('Connect With Us'),
@@ -19,14 +24,15 @@ export const multiLinkOutroSchema = z.object({
         handle: z.string(),
         url: z.string(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { platform: 'Website', handle: 'lapaas.com', url: 'https://lapaas.com', color: '#10b981' },
         { platform: 'YouTube', handle: '@LapaasIndia', url: 'https://youtube.com/lapaasindia', color: '#ef4444' },
         { platform: 'Twitter', handle: '@SahilKhanna', url: 'https://twitter.com/sahilkhanna', color: '#3b82f6' },
         { platform: 'LinkedIn', handle: 'Lapaas India', url: 'https://linkedin.com/company/lapaas', color: '#0ea5e9' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
 });
 
 type Props = z.infer<typeof multiLinkOutroSchema>;
@@ -41,6 +47,7 @@ export const MultiLinkOutro: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -50,7 +57,7 @@ export const MultiLinkOutro: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor, justifyContent: 'center', alignItems: 'center' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor, justifyContent: 'center', alignItems: 'center' }}>
             {/* Header */}
             <div style={{
                 transform: `translateY(${(1 - titleY) * -50}px)`,
@@ -60,7 +67,7 @@ export const MultiLinkOutro: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 80 : 96) * scale,
                         margin: 0,
@@ -84,7 +91,7 @@ export const MultiLinkOutro: React.FC<Props> = ({
 
                     return (
                         <div key={i} style={{
-                            backgroundColor: 'rgba(255,255,255,0.05)',
+                            backgroundColor: COLORS.surfaceLight,
                             borderRadius: 16 * scale,
                             padding: `${20 * scale}px ${30 * scale}px`,
                             display: 'flex',
@@ -92,14 +99,14 @@ export const MultiLinkOutro: React.FC<Props> = ({
                             justifyContent: 'space-between',
                             transform: `scale(${pop}) translateY(${(1 - pop) * 30}px)`,
                             opacity: op,
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: `1px solid ${COLORS.borderLight}`,
                             borderLeft: `6px solid ${link.color}`,
                             boxShadow: `0 10px 30px ${link.color}20`,
                         }}>
                             <div>
                                 <div style={{ 
                                     fontSize: 16 * scale, 
-                                    color: 'rgba(255,255,255,0.5)',
+                                    color: COLORS.textMuted,
                                     textTransform: 'uppercase',
                                     letterSpacing: '0.1em',
                                     marginBottom: 4 * scale,

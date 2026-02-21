@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const featureListPopupsSchema = z.object({
     title: z.string().default('Core Features'),
@@ -18,16 +23,17 @@ export const featureListPopupsSchema = z.object({
         title: z.string(),
         desc: z.string(),
         icon: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { title: 'Lightning Fast', desc: 'Render times up to 10x faster than competitors.', icon: '⚡' },
         { title: 'AI-Powered', desc: 'Smart algorithms do the heavy lifting for you.', icon: '🧠' },
         { title: 'Cloud Sync', desc: 'Access your projects from any device, anywhere.', icon: '☁️' },
         { title: 'Team Collaboration', desc: 'Work together in real-time without conflicts.', icon: '🤝' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    cardBgColor: z.string().default('#1e293b'),
-    accentColor: z.string().default('#a855f7'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof featureListPopupsSchema>;
@@ -44,6 +50,7 @@ export const FeatureListPopups: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -57,7 +64,7 @@ export const FeatureListPopups: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -71,7 +78,7 @@ export const FeatureListPopups: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -120,7 +127,7 @@ export const FeatureListPopups: React.FC<Props> = ({
                             transform: `translateY(${(1 - yOffset) * 50}px) scale(${hoverScale})`,
                             opacity: op,
                             boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
-                            border: '1px solid rgba(255,255,255,0.05)',
+                            border: `1px solid ${COLORS.border}`,
                             display: 'flex',
                             gap: 24 * scale,
                             alignItems: 'flex-start',
@@ -147,7 +154,7 @@ export const FeatureListPopups: React.FC<Props> = ({
                                 <div style={{
                                     fontSize: 24 * scale,
                                     fontWeight: 700,
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     color: '#fff',
                                     letterSpacing: '0.01em',
                                 }}>
@@ -155,7 +162,7 @@ export const FeatureListPopups: React.FC<Props> = ({
                                 </div>
                                 <div style={{
                                     fontSize: 18 * scale,
-                                    color: 'rgba(255,255,255,0.7)',
+                                    color: COLORS.textSecondary,
                                     lineHeight: 1.5,
                                 }}>
                                     {feat.desc}

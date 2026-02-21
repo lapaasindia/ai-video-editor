@@ -28,7 +28,7 @@ export const boldPitchSchema = z.object({
     word4: z.string().default('TRACTION'),
     primaryColor: z.string().default(COLORS.accent),
     accentColor: z.string().default(COLORS.accentLight),
-    textColor: z.string().default('#FFFFFF'),
+    textColor: z.string().default(COLORS.textPrimary),
     showShapes: z.boolean().default(true),
 });
 

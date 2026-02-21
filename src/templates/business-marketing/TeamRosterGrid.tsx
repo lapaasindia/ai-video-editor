@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const teamRosterSchema = z.object({
     title: z.string().default('Meet The Experts'),
@@ -21,15 +26,16 @@ export const teamRosterSchema = z.object({
         role: z.string(),
         avatarUrl: z.string(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { name: 'Sarah Jenkins', role: 'Chief Marketing Officer', avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300', color: '#3b82f6' },
         { name: 'Marcus Chen', role: 'Head of Growth', avatarUrl: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=300', color: '#10b981' },
         { name: 'Elena Rodriguez', role: 'VP of Product', avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300', color: '#f43f5e' },
         { name: 'David Kim', role: 'Lead Data Scientist', avatarUrl: 'https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=300', color: '#a855f7' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    cardBgColor: z.string().default('#1e293b'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
 });
 
 type Props = z.infer<typeof teamRosterSchema>;
@@ -46,6 +52,7 @@ export const TeamRosterGrid: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -61,7 +68,7 @@ export const TeamRosterGrid: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -75,7 +82,7 @@ export const TeamRosterGrid: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -151,7 +158,7 @@ export const TeamRosterGrid: React.FC<Props> = ({
                             <div style={{
                                 fontSize: (isPortrait ? 20 : 28) * scale,
                                 fontWeight: 800,
-                                fontFamily: montserratFont,
+                                fontFamily: interFont,
                                 color: '#fff',
                                 marginBottom: 8 * scale,
                             }}>

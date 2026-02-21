@@ -35,9 +35,9 @@ export const cutoutHookSchema = z.object({
     icon1Label: z.string().default('TikTok'),
     icon2Label: z.string().default('YouTube'),
     icon3Label: z.string().default('Instagram'),
-    primaryColor: z.string().default('#FF6B35'),
-    accentColor: z.string().default('#00D4FF'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    primaryColor: z.string().default(COLORS.accent),
+    accentColor: z.string().default(COLORS.accent),
+    backgroundColor: z.string().default(COLORS.bg),
     showGrain: z.boolean().default(true),
     showVignette: z.boolean().default(true),
 });

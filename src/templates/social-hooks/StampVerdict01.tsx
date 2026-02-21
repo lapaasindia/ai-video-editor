@@ -30,7 +30,7 @@ export const stampVerdictSchema = z.object({
     followupLine: z.string().default('Here\'s why it matters'),
     stampColor: z.string().default('#FF4444'),
     stampRotation: z.number().default(-6),
-    backgroundColor: z.string().default('#0A0A0F'),
+    backgroundColor: z.string().default(COLORS.bg),
     showDistress: z.boolean().default(true),
 });
 

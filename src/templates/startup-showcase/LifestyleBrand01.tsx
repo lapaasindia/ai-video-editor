@@ -31,6 +31,7 @@ export const lifestyleBrandSchema = z.object({
     accentColor: z.string().default(COLORS.accentLight), // Gold
     showGrain: z.boolean().default(true),
     enableSplits: z.boolean().default(true),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof lifestyleBrandSchema>;
@@ -52,7 +53,7 @@ export const LifestyleBrand01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(COLORS.bg, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
             }}
         >

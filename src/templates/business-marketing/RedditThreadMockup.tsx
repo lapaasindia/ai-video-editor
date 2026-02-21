@@ -9,6 +9,10 @@ import {
 } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
 import { registerTemplate } from '../registry';
 import { interFont } from '../../lib/fonts';
 
@@ -42,6 +46,7 @@ export const RedditThreadMockup: React.FC<Props> = ({
     
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
+    const backgroundControls = useResolvedBackgroundControls();
 
     const pop = spring({ frame: frame - 10, fps, config: { damping: 14, mass: 1.2 } });
     const op = interpolate(frame - 10, [0, 10], [0, 1], { extrapolateRight: 'clamp' });
@@ -57,7 +62,7 @@ export const RedditThreadMockup: React.FC<Props> = ({
     const hoverBg = darkMode ? '#272729' : '#f6f7f8';
 
     return (
-        <AbsoluteFill style={{ backgroundColor: canvasBg, fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(canvasBg, backgroundControls), fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
             <div style={{
                 width: cardWidth,
                 backgroundColor: bg,

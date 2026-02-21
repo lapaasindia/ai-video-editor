@@ -32,9 +32,9 @@ export const timelineStepsSchema = z.object({
     step4Title: z.string().default('Step 4'),
     step4Desc: z.string().default('See results'),
     recapText: z.string().default('Simple as that!'),
-    primaryColor: z.string().default('#00D4FF'),
-    accentColor: z.string().default('#FF6B35'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    primaryColor: z.string().default(COLORS.accent),
+    accentColor: z.string().default(COLORS.accent),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof timelineStepsSchema>;

@@ -10,14 +10,20 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const vsTableSchema = z.object({
     title: z.string().default('Why Us?'),
     competitors: z.array(z.string()).default(['Us', 'Them']),
     features: z.array(z.object({
         name: z.string(),
-        values: z.array(z.boolean()), // true = check, false = X
+        values: z.array(z.boolean()),
+    backgroundColor: z.string().default(COLORS.bg), // true = check, false = X
     })).default([
         { name: 'AI-Powered Automation', values: [true, false] },
         { name: '24/7 Dedicated Support', values: [true, false] },
@@ -25,9 +31,9 @@ export const vsTableSchema = z.object({
         { name: 'Custom API Integrations', values: [true, false] },
         { name: 'No Hidden Fees', values: [true, false] },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    accentColor: z.string().default('#10b981'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof vsTableSchema>;
@@ -44,6 +50,7 @@ export const UsVsThemTable: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -57,7 +64,7 @@ export const UsVsThemTable: React.FC<Props> = ({
     const valueColWidth = (availableWidth * 0.6) / competitors.length;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -71,7 +78,7 @@ export const UsVsThemTable: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -88,18 +95,18 @@ export const UsVsThemTable: React.FC<Props> = ({
                 width: availableWidth,
                 backgroundColor: 'rgba(255,255,255,0.02)',
                 borderRadius: 24 * scale,
-                border: '1px solid rgba(255,255,255,0.05)',
+                border: `1px solid ${COLORS.border}`,
                 overflow: 'hidden',
                 boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
             }}>
                 {/* Table Header Row */}
                 <div style={{
                     display: 'flex',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    backgroundColor: COLORS.surfaceLight,
                     padding: `${20 * scale}px 0`,
                     borderBottom: '1px solid rgba(255,255,255,0.1)',
                 }}>
-                    <div style={{ width: featureColWidth, paddingLeft: 30 * scale, fontSize: 18 * scale, fontWeight: 600, color: 'rgba(255,255,255,0.5)' }}>
+                    <div style={{ width: featureColWidth, paddingLeft: 30 * scale, fontSize: 18 * scale, fontWeight: 600, color: COLORS.textMuted }}>
                         FEATURES
                     </div>
                     {competitors.map((comp, i) => (
@@ -108,7 +115,7 @@ export const UsVsThemTable: React.FC<Props> = ({
                             textAlign: 'center', 
                             fontSize: 24 * scale, 
                             fontWeight: 800, 
-                            fontFamily: montserratFont,
+                            fontFamily: interFont,
                             color: i === 0 ? accentColor : 'rgba(255,255,255,0.7)',
                             textTransform: 'uppercase',
                             letterSpacing: '0.05em',
@@ -140,7 +147,7 @@ export const UsVsThemTable: React.FC<Props> = ({
                                 paddingLeft: 30 * scale, 
                                 fontSize: 20 * scale, 
                                 fontWeight: 500,
-                                color: 'rgba(255,255,255,0.9)',
+                                color: COLORS.textPrimary,
                             }}>
                                 {feat.name}
                             </div>

@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const trustMetricsSchema = z.object({
     title: z.string().default('By The Numbers'),
@@ -18,30 +23,31 @@ export const trustMetricsSchema = z.object({
         number: z.string(),
         label: z.string(),
         icon: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { number: '1M+', label: 'Active Users', icon: '👥' },
         { number: '99.9%', label: 'Uptime SLA', icon: '⚡' },
         { number: '24/7', label: 'Support', icon: '🎧' },
         { number: '50+', label: 'Countries', icon: '🌍' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    accentColor: z.string().default('#3b82f6'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof trustMetricsSchema>;
 
 export const TrustMetricsTicker: React.FC<Props> = ({
     title,
-    metrics,
-    backgroundColor,
-    textColor,
+    metrics,    textColor,
     accentColor,
+    backgroundColor,
 }) => {
     const frame = useCurrentFrame();
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -53,7 +59,7 @@ export const TrustMetricsTicker: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Background Accent Gradient */}
             <div style={{
                 position: 'absolute',
@@ -74,7 +80,7 @@ export const TrustMetricsTicker: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -124,7 +130,7 @@ export const TrustMetricsTicker: React.FC<Props> = ({
                             <div style={{
                                 fontSize: (isPortrait ? 72 : 96) * scale,
                                 fontWeight: 900,
-                                fontFamily: montserratFont,
+                                fontFamily: interFont,
                                 letterSpacing: '-0.03em',
                                 color: '#fff',
                                 textShadow: `0 10px 30px ${accentColor}40`,
@@ -136,7 +142,7 @@ export const TrustMetricsTicker: React.FC<Props> = ({
                             <div style={{
                                 fontSize: 24 * scale,
                                 fontWeight: 600,
-                                color: 'rgba(255,255,255,0.7)',
+                                color: COLORS.textSecondary,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.1em',
                             }}>

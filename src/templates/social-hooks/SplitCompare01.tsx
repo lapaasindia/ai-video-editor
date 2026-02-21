@@ -16,6 +16,7 @@ import {
     useResolvedBackgroundControls,
 } from '../../lib/background';
 import { registerTemplate } from '../registry';
+import { COLORS } from '../../lib/theme';
 import { interFont } from '../../lib/fonts';
 
 // ─── Schema ──────────────────────────────────────────────────
@@ -26,7 +27,7 @@ export const splitCompareSchema = z.object({
     rightLabel: z.string().default('AFTER'),
     leftColor: z.string().default('#FF4444'),
     rightColor: z.string().default('#00E676'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof splitCompareSchema>;

@@ -9,6 +9,10 @@ import {
 } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
 import { registerTemplate } from '../registry';
 import { interFont } from '../../lib/fonts';
 
@@ -39,7 +43,6 @@ export const YouTubePlayerMockup: React.FC<Props> = ({
     likes,
     thumbnailUrl,
     duration,
-    backgroundColor,
         darkMode,
 }) => {
     const frame = useCurrentFrame();
@@ -47,6 +50,7 @@ export const YouTubePlayerMockup: React.FC<Props> = ({
     
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
+    const backgroundControls = useResolvedBackgroundControls();
 
     const pop = spring({ frame: frame - 10, fps, config: { damping: 14, mass: 1.2 } });
     const op = interpolate(frame - 10, [0, 10], [0, 1], { extrapolateRight: 'clamp' });
@@ -60,7 +64,7 @@ export const YouTubePlayerMockup: React.FC<Props> = ({
     const buttonBg = darkMode ? '#272727' : '#0000000d';
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground('#0f0f0f', backgroundControls), fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
             <div style={{
                 width: cardWidth,
                 backgroundColor: bg,

@@ -15,6 +15,7 @@ import {
     useResolvedBackgroundControls,
 } from '../../lib/background';
 import { registerTemplate } from '../registry';
+import { COLORS } from '../../lib/theme';
 import { EditableText } from '../../components/EditableText';
 import { interFont } from '../../lib/fonts';
 
@@ -26,7 +27,7 @@ export const lightLeakSmashSchema = z.object({
     ctaText: z.string().default('Follow for more'),
     leakColor1: z.string().default('#FF6B35'),
     leakColor2: z.string().default('#FFD93D'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    backgroundColor: z.string().default(COLORS.bg),
     showScanlines: z.boolean().default(true),
     showGrain: z.boolean().default(true),
 });

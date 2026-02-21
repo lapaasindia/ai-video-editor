@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const pricingTiersSchema = z.object({
     title: z.string().default('Pricing'),
@@ -22,6 +27,7 @@ export const pricingTiersSchema = z.object({
         features: z.array(z.string()),
         isPopular: z.boolean().default(false),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { 
             name: 'Starter', price: '$29', period: '/mo', color: '#64748b',
@@ -36,9 +42,9 @@ export const pricingTiersSchema = z.object({
             features: ['Unlimited Users', '1TB Storage', 'Dedicated Rep', 'Custom API']
         },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    cardBgColor: z.string().default('#1e293b'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
 });
 
 type Props = z.infer<typeof pricingTiersSchema>;
@@ -55,6 +61,7 @@ export const PricingTiers: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -74,7 +81,7 @@ export const PricingTiers: React.FC<Props> = ({
     const topPos = rows > 1 ? '48%' : '50%';
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -88,7 +95,7 @@ export const PricingTiers: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -161,7 +168,7 @@ export const PricingTiers: React.FC<Props> = ({
                             <div style={{
                                 fontSize: (isPortrait ? 24 : 28) * scale,
                                 fontWeight: 800,
-                                fontFamily: montserratFont,
+                                fontFamily: interFont,
                                 color: tier.color,
                                 marginBottom: 16 * scale,
                             }}>
@@ -169,10 +176,10 @@ export const PricingTiers: React.FC<Props> = ({
                             </div>
                             
                             <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 30 * scale }}>
-                                <span style={{ fontSize: (isPortrait ? 48 : 60) * scale, fontWeight: 900, fontFamily: montserratFont }}>
+                                <span style={{ fontSize: (isPortrait ? 48 : 60) * scale, fontWeight: 900, fontFamily: interFont }}>
                                     {tier.price}
                                 </span>
-                                <span style={{ fontSize: 20 * scale, color: 'rgba(255,255,255,0.6)', marginLeft: 8 * scale }}>
+                                <span style={{ fontSize: 20 * scale, color: COLORS.textSecondary, marginLeft: 8 * scale }}>
                                     {tier.period}
                                 </span>
                             </div>
@@ -196,7 +203,7 @@ export const PricingTiers: React.FC<Props> = ({
                                             <svg width={20 * scale} height={20 * scale} viewBox="0 0 24 24" fill="none" stroke={tier.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                                 <polyline points="20 6 9 17 4 12"></polyline>
                                             </svg>
-                                            <span style={{ fontSize: 18 * scale, fontWeight: 500, color: 'rgba(255,255,255,0.9)' }}>
+                                            <span style={{ fontSize: 18 * scale, fontWeight: 500, color: COLORS.textPrimary }}>
                                                 {feat}
                                             </span>
                                         </div>

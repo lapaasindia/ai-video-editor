@@ -31,6 +31,7 @@ export const founderJourneySchema = z.object({
     primaryColor: z.string().default(COLORS.accent),
     enableGrayscale: z.boolean().default(true),
     showOverlay: z.boolean().default(true),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof founderJourneySchema>;
@@ -49,7 +50,7 @@ export const FounderJourney01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(COLORS.bg, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
             }}
         >

@@ -9,6 +9,10 @@ import {
 } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
 import { registerTemplate } from '../registry';
 import { interFont } from '../../lib/fonts';
 
@@ -48,6 +52,7 @@ export const TwitterPostMockup: React.FC<Props> = ({
     
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
+    const backgroundControls = useResolvedBackgroundControls();
 
     const pop = spring({ frame: frame - 10, fps, config: { damping: 14, mass: 1.2 } });
     const op = interpolate(frame - 10, [0, 10], [0, 1], { extrapolateRight: 'clamp' });
@@ -63,7 +68,7 @@ export const TwitterPostMockup: React.FC<Props> = ({
     const cardWidth = isPortrait ? width * 0.9 : 600 * scale;
 
     return (
-        <AbsoluteFill style={{ backgroundColor: darkMode ? '#15202b' : '#f7f9f9', fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(darkMode ? '#15202b' : '#f7f9f9', backgroundControls), fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
             <div style={{
                 width: cardWidth,
                 backgroundColor: bg,

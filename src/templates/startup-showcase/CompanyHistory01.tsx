@@ -30,6 +30,7 @@ export const companyHistorySchema = z.object({
     showTracking: z.boolean().default(true),
     showDate: z.boolean().default(true),
     showScanlines: z.boolean().default(true),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof companyHistorySchema>;
@@ -52,7 +53,7 @@ export const CompanyHistory01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(COLORS.bg, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
             }}
         >

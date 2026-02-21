@@ -18,6 +18,7 @@ import {
     useResolvedBackgroundControls,
 } from '../../lib/background';
 import { registerTemplate } from '../registry';
+import { COLORS } from '../../lib/theme';
 import { interFont } from '../../lib/fonts';
 
 // ─── Schema ──────────────────────────────────────────────────
@@ -29,7 +30,7 @@ export const headlineCardSchema = z.object({
     titleLine3: z.string().default('THAN MONEY'),
     titleColor: z.string().default('#F21A1D'),
     shadowColor: z.string().default('#000000'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    backgroundColor: z.string().default(COLORS.bg),
     showGrain: z.boolean().default(true),
 });
 

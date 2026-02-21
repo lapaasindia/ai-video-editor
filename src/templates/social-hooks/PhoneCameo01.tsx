@@ -27,9 +27,9 @@ export const phoneCameoSchema = z.object({
     logoUrl: z.string().default(''),
     title: z.string().default('Creator spotlight'),
     subtitle: z.string().default('@username'),
-    primaryColor: z.string().default('#00D4FF'),
-    accentColor: z.string().default('#FF6B35'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    primaryColor: z.string().default(COLORS.accent),
+    accentColor: z.string().default(COLORS.accent),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof phoneCameoSchema>;

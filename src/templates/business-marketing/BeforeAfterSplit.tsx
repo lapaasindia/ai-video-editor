@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const beforeAfterSplitSchema = z.object({
     title: z.string().default('The Transformation'),
@@ -28,8 +33,8 @@ export const beforeAfterSplitSchema = z.object({
         'Predictable MRR',
         '95% retention rate',
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     beforeColor: z.string().default('#ef4444'),
     afterColor: z.string().default('#10b981'),
 });
@@ -51,6 +56,7 @@ export const BeforeAfterSplit: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -68,7 +74,7 @@ export const BeforeAfterSplit: React.FC<Props> = ({
     const flexDirection = isPortrait ? 'column' : 'row';
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -83,7 +89,7 @@ export const BeforeAfterSplit: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -124,7 +130,7 @@ export const BeforeAfterSplit: React.FC<Props> = ({
                         fontSize: 32 * scale, 
                         fontWeight: 800, 
                         color: beforeColor, 
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         marginBottom: 30 * scale,
                         textTransform: 'uppercase',
                         letterSpacing: '0.1em',
@@ -157,7 +163,7 @@ export const BeforeAfterSplit: React.FC<Props> = ({
                         fontSize: 32 * scale, 
                         fontWeight: 800, 
                         color: afterColor, 
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         marginBottom: 30 * scale,
                         textTransform: 'uppercase',
                         letterSpacing: '0.1em',

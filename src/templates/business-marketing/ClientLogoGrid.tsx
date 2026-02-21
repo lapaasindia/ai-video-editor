@@ -10,6 +10,10 @@ import {
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
 import { registerTemplate } from '../registry';
 import { interFont, montserratFont } from '../../lib/fonts';
 
@@ -42,6 +46,7 @@ export const ClientLogoGrid: React.FC<Props> = ({
     
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
+    const backgroundControls = useResolvedBackgroundControls();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
     const titleOpacity = interpolate(frame, [0, 15], [0, 1], { extrapolateRight: 'clamp' });
@@ -57,7 +62,7 @@ export const ClientLogoGrid: React.FC<Props> = ({
     
     // We center the grid vertically
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',

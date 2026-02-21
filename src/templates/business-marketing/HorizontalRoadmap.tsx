@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const horizontalRoadmapSchema = z.object({
     title: z.string().default('Product Roadmap'),
@@ -20,14 +25,15 @@ export const horizontalRoadmapSchema = z.object({
         title: z.string(),
         desc: z.string(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { time: 'Q1', title: 'Beta Launch', desc: 'Invite-only release for early adopters.', color: '#3b82f6' },
         { time: 'Q2', title: 'Mobile App', desc: 'Native iOS and Android applications.', color: '#10b981' },
         { time: 'Q3', title: 'API Access', desc: 'Public REST API for developers.', color: '#f59e0b' },
         { time: 'Q4', title: 'Enterprise', desc: 'SSO, SLA, and dedicated support.', color: '#8b5cf6' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     lineColor: z.string().default('rgba(255,255,255,0.2)'),
 });
 
@@ -45,6 +51,7 @@ export const HorizontalRoadmap: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -63,7 +70,7 @@ export const HorizontalRoadmap: React.FC<Props> = ({
     const drawProgress = spring({ frame: frame - 20, fps, config: { damping: 20, mass: 1.5 } });
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -77,7 +84,7 @@ export const HorizontalRoadmap: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -194,7 +201,7 @@ export const HorizontalRoadmap: React.FC<Props> = ({
                                 <div style={{
                                     fontSize: 28 * scale,
                                     fontWeight: 700,
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     color: '#fff',
                                     marginBottom: 12 * scale,
                                 }}>
@@ -202,7 +209,7 @@ export const HorizontalRoadmap: React.FC<Props> = ({
                                 </div>
                                 <div style={{
                                     fontSize: 18 * scale,
-                                    color: 'rgba(255,255,255,0.7)',
+                                    color: COLORS.textSecondary,
                                     lineHeight: 1.4,
                                     maxWidth: 300 * scale,
                                 }}>

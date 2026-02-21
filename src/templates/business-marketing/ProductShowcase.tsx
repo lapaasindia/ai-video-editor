@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const productShowcaseSchema = z.object({
     title: z.string().default('New Release'),
@@ -24,8 +29,8 @@ export const productShowcaseSchema = z.object({
         'Dynamic B-Roll',
         '1-Click Export',
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     primaryColor: z.string().default('#3b82f6'),
 });
 
@@ -45,6 +50,7 @@ export const ProductShowcase: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -64,7 +70,7 @@ export const ProductShowcase: React.FC<Props> = ({
     const slowZoom = interpolate(frame, [0, 300], [1, 1.1]);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             <div style={{
                 position: 'absolute',
                 top: isPortrait ? 100 * scale : '50%',
@@ -101,7 +107,7 @@ export const ProductShowcase: React.FC<Props> = ({
                     <EditableText
                         text={productName}
                         style={{
-                            fontFamily: montserratFont,
+                            fontFamily: interFont,
                             fontWeight: 900,
                             fontSize: (isPortrait ? 64 : 80) * scale,
                             margin: 0,
@@ -115,7 +121,7 @@ export const ProductShowcase: React.FC<Props> = ({
 
                     <div style={{
                         fontSize: 22 * scale,
-                        color: 'rgba(255,255,255,0.7)',
+                        color: COLORS.textSecondary,
                         lineHeight: 1.5,
                         marginBottom: 40 * scale,
                         maxWidth: 600 * scale,
@@ -144,15 +150,15 @@ export const ProductShowcase: React.FC<Props> = ({
                                     gap: 12 * scale,
                                     transform: `translateX(${(1 - pop) * -20}px)`,
                                     opacity: op,
-                                    backgroundColor: 'rgba(255,255,255,0.05)',
+                                    backgroundColor: COLORS.surfaceLight,
                                     padding: `${16 * scale}px ${20 * scale}px`,
                                     borderRadius: 12 * scale,
-                                    border: '1px solid rgba(255,255,255,0.05)',
+                                    border: `1px solid ${COLORS.border}`,
                                 }}>
                                     <svg width={20 * scale} height={20 * scale} viewBox="0 0 24 24" fill="none" stroke={primaryColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                         <polyline points="20 6 9 17 4 12"></polyline>
                                     </svg>
-                                    <span style={{ fontSize: 18 * scale, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+                                    <span style={{ fontSize: 18 * scale, fontWeight: 600, color: COLORS.textPrimary }}>
                                         {highlight}
                                     </span>
                                 </div>

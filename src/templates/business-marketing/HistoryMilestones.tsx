@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const historyMilestonesSchema = z.object({
     title: z.string().default('Our Journey'),
@@ -19,30 +24,31 @@ export const historyMilestonesSchema = z.object({
         year: z.string(),
         title: z.string(),
         imageUrl: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { year: '2018', title: 'The Idea Born', imageUrl: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?w=800' },
         { year: '2020', title: 'First Office', imageUrl: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800' },
         { year: '2022', title: 'Series A Funding', imageUrl: 'https://images.unsplash.com/photo-1556761175-5973dc0f32d7?w=800' },
         { year: '2024', title: 'Global Expansion', imageUrl: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    accentColor: z.string().default('#f43f5e'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof historyMilestonesSchema>;
 
 export const HistoryMilestones: React.FC<Props> = ({
     title,
-    milestones,
-    backgroundColor,
-    textColor,
+    milestones,    textColor,
     accentColor,
+    backgroundColor,
 }) => {
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -56,7 +62,7 @@ export const HistoryMilestones: React.FC<Props> = ({
     // The "camera" moves forward on the Z axis
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor, perspective: '1500px', overflow: 'hidden' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor, perspective: '1500px', overflow: 'hidden' }}>
             {/* Header stays static on screen */}
             <div style={{
                 position: 'absolute',
@@ -71,7 +77,7 @@ export const HistoryMilestones: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -134,7 +140,7 @@ export const HistoryMilestones: React.FC<Props> = ({
                                 <div style={{
                                     fontSize: 80 * scale,
                                     fontWeight: 900,
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     color: accentColor,
                                     lineHeight: 1,
                                     marginBottom: 10 * scale,

@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const resourceDownloadSchema = z.object({
     title: z.string().default('Free SEO Guide'),
@@ -22,8 +27,8 @@ export const resourceDownloadSchema = z.object({
         'Technical SEO checklist',
     ]),
     bookTitle: z.string().default('SEO\n2024'),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     primaryColor: z.string().default('#3b82f6'),
     secondaryColor: z.string().default('#1e293b'),
 });
@@ -44,6 +49,7 @@ export const ResourceDownloadList: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -57,7 +63,7 @@ export const ResourceDownloadList: React.FC<Props> = ({
     const listWidth = isPortrait ? availableWidth : availableWidth * 0.55;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -71,7 +77,7 @@ export const ResourceDownloadList: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -143,7 +149,7 @@ export const ResourceDownloadList: React.FC<Props> = ({
                         <div style={{
                             fontSize: 48 * scale,
                             fontWeight: 900,
-                            fontFamily: montserratFont,
+                            fontFamily: interFont,
                             color: '#fff',
                             textAlign: 'center',
                             lineHeight: 1.2,
@@ -165,7 +171,7 @@ export const ResourceDownloadList: React.FC<Props> = ({
                     <div style={{
                         fontSize: 24 * scale,
                         fontWeight: 700,
-                        color: 'rgba(255,255,255,0.5)',
+                        color: COLORS.textMuted,
                         textTransform: 'uppercase',
                         letterSpacing: '0.1em',
                         marginBottom: 10 * scale,
@@ -187,7 +193,7 @@ export const ResourceDownloadList: React.FC<Props> = ({
                                 gap: 20 * scale,
                                 transform: `translateX(${(1 - pop) * 40}px)`,
                                 opacity: op,
-                                border: '1px solid rgba(255,255,255,0.05)',
+                                border: `1px solid ${COLORS.border}`,
                                 boxShadow: '0 10px 20px rgba(0,0,0,0.1)',
                             }}>
                                 <div style={{
@@ -208,7 +214,7 @@ export const ResourceDownloadList: React.FC<Props> = ({
                                 <div style={{
                                     fontSize: 20 * scale,
                                     fontWeight: 500,
-                                    color: 'rgba(255,255,255,0.9)',
+                                    color: COLORS.textPrimary,
                                 }}>
                                     {bullet}
                                 </div>

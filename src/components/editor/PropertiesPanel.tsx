@@ -958,6 +958,141 @@ const StageError: React.FC = () => {
 
 // ─── Template Properties Panel ──────────────────────────────────────────────
 
+// ─── Inline field editor for a single primitive value ────────────────────────
+const PrimitiveField: React.FC<{
+    label: string;
+    value: unknown;
+    onChange: (v: any) => void;
+}> = ({ label, value, onChange }) => {
+    const type = typeof value;
+    const inputStyle: React.CSSProperties = {
+        width: '100%', padding: '4px 6px', fontSize: 11,
+        background: 'rgba(255,255,255,0.05)', border: '1px solid var(--panel-border)',
+        borderRadius: 4, color: 'var(--text-primary)',
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                {label.replace(/([A-Z])/g, ' $1').trim()}
+            </label>
+            {type === 'string' && (
+                label.toLowerCase().includes('color') ? (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <input type="color" value={value as string} onChange={e => onChange(e.target.value)}
+                            style={{ width: 30, height: 24, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
+                        <input type="text" value={value as string} onChange={e => onChange(e.target.value)}
+                            style={{ ...inputStyle, flex: 1, width: 'auto' }} />
+                    </div>
+                ) : (
+                    <input type="text" value={value as string} onChange={e => onChange(e.target.value)} style={inputStyle} />
+                )
+            )}
+            {type === 'number' && (
+                <input type="number" value={value as number} onChange={e => onChange(Number(e.target.value))} style={inputStyle} />
+            )}
+            {type === 'boolean' && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, cursor: 'pointer', color: 'var(--text-primary)' }}>
+                    <input type="checkbox" checked={value as boolean} onChange={e => onChange(e.target.checked)} />
+                    {value ? 'Enabled' : 'Disabled'}
+                </label>
+            )}
+        </div>
+    );
+};
+
+// ─── Collapsible array item editor ───────────────────────────────────────────
+const ArrayItemEditor: React.FC<{
+    item: Record<string, unknown>;
+    index: number;
+    onFieldChange: (field: string, value: any) => void;
+    onRemove: () => void;
+}> = ({ item, index, onFieldChange, onRemove }) => {
+    const [open, setOpen] = useState(false);
+    const preview = Object.values(item).filter(v => typeof v === 'string').slice(0, 2).join(' · ') || `Item ${index + 1}`;
+
+    return (
+        <div style={{ border: '1px solid var(--panel-border)', borderRadius: 6, overflow: 'hidden', background: 'rgba(255,255,255,0.02)' }}>
+            <div
+                onClick={() => setOpen(!open)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', cursor: 'pointer', fontSize: 11, color: 'var(--text-primary)', userSelect: 'none' }}
+            >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                    <span style={{ fontSize: 9, opacity: 0.5 }}>{open ? '▼' : '▶'}</span>
+                    <span style={{ fontWeight: 600, flexShrink: 0 }}>#{index + 1}</span>
+                    <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preview}</span>
+                </span>
+                <button onClick={e => { e.stopPropagation(); onRemove(); }}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 13, padding: '0 4px', lineHeight: 1 }}
+                    title="Remove item">×</button>
+            </div>
+            {open && (
+                <div style={{ padding: '6px 8px 10px', display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--panel-border)' }}>
+                    {Object.entries(item).map(([field, val]) => (
+                        <PrimitiveField key={field} label={field} value={val} onChange={v => onFieldChange(field, v)} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ─── Array prop editor with add/remove ───────────────────────────────────────
+const ArrayPropEditor: React.FC<{
+    label: string;
+    items: Record<string, unknown>[];
+    defaultItem: Record<string, unknown>;
+    onChange: (items: Record<string, unknown>[]) => void;
+}> = ({ label, items, defaultItem, onChange }) => {
+    const [collapsed, setCollapsed] = useState(true);
+
+    const handleFieldChange = (index: number, field: string, value: any) => {
+        const next = items.map((item, i) => i === index ? { ...item, [field]: value } : item);
+        onChange(next);
+    };
+
+    const handleRemove = (index: number) => {
+        onChange(items.filter((_, i) => i !== index));
+    };
+
+    const handleAdd = () => {
+        onChange([...items, { ...defaultItem }]);
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div onClick={() => setCollapsed(!collapsed)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}>
+                <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 9, opacity: 0.5 }}>{collapsed ? '▶' : '▼'}</span>
+                    {label.replace(/([A-Z])/g, ' $1').trim()} ({items.length})
+                </label>
+            </div>
+            {!collapsed && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 4 }}>
+                    {items.map((item, i) => (
+                        <ArrayItemEditor
+                            key={i}
+                            item={item}
+                            index={i}
+                            onFieldChange={(field, value) => handleFieldChange(i, field, value)}
+                            onRemove={() => handleRemove(i)}
+                        />
+                    ))}
+                    <button onClick={handleAdd}
+                        style={{
+                            background: 'rgba(255,255,255,0.05)', border: '1px dashed var(--panel-border)',
+                            borderRadius: 6, padding: '5px 0', fontSize: 11, color: 'var(--text-muted)',
+                            cursor: 'pointer', marginTop: 2,
+                        }}>
+                        + Add Item
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const TemplateProperties: React.FC<{ clip: any }> = ({ clip }) => {
     const { updateClip } = useEditor();
     const template = useMemo(() => clip.templateId ? getTemplateById(clip.templateId) : undefined, [clip.templateId]);
@@ -981,70 +1116,31 @@ const TemplateProperties: React.FC<{ clip: any }> = ({ clip }) => {
                 const value = props[key] ?? defaultValue;
                 const type = typeof defaultValue;
 
-                // Skip complex objects/arrays for now unless specific handling
+                // Array of objects — render collapsible array editor
+                if (Array.isArray(defaultValue) && defaultValue.length > 0 && typeof defaultValue[0] === 'object' && defaultValue[0] !== null) {
+                    const currentItems = (Array.isArray(value) ? value : defaultValue) as Record<string, unknown>[];
+                    const defaultItem = defaultValue[0] as Record<string, unknown>;
+                    return (
+                        <ArrayPropEditor
+                            key={key}
+                            label={key}
+                            items={currentItems}
+                            defaultItem={defaultItem}
+                            onChange={items => handleChange(key, items)}
+                        />
+                    );
+                }
+
+                // Skip non-array objects
                 if (type === 'object' && defaultValue !== null) return null;
 
                 return (
-                    <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                            {key.replace(/([A-Z])/g, ' $1').trim()}
-                        </label>
-                        {type === 'string' && (
-                            key.toLowerCase().includes('color') ? (
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <input
-                                        type="color"
-                                        value={value as string}
-                                        onChange={e => handleChange(key, e.target.value)}
-                                        style={{ width: 30, height: 24, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
-                                    />
-                                    <input
-                                        type="text"
-                                        value={value as string}
-                                        onChange={e => handleChange(key, e.target.value)}
-                                        style={{
-                                            flex: 1, padding: '4px 6px', fontSize: 11,
-                                            background: 'rgba(255,255,255,0.05)', border: '1px solid var(--panel-border)',
-                                            borderRadius: 4, color: 'var(--text-primary)'
-                                        }}
-                                    />
-                                </div>
-                            ) : (
-                                <input
-                                    type="text"
-                                    value={value as string}
-                                    onChange={e => handleChange(key, e.target.value)}
-                                    style={{
-                                        width: '100%', padding: '4px 6px', fontSize: 11,
-                                        background: 'rgba(255,255,255,0.05)', border: '1px solid var(--panel-border)',
-                                        borderRadius: 4, color: 'var(--text-primary)'
-                                    }}
-                                />
-                            )
-                        )}
-                        {type === 'number' && (
-                            <input
-                                type="number"
-                                value={value as number}
-                                onChange={e => handleChange(key, Number(e.target.value))}
-                                style={{
-                                    width: '100%', padding: '4px 6px', fontSize: 11,
-                                    background: 'rgba(255,255,255,0.05)', border: '1px solid var(--panel-border)',
-                                    borderRadius: 4, color: 'var(--text-primary)'
-                                }}
-                            />
-                        )}
-                        {type === 'boolean' && (
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, cursor: 'pointer', color: 'var(--text-primary)' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={value as boolean}
-                                    onChange={e => handleChange(key, e.target.checked)}
-                                />
-                                {value ? 'Enabled' : 'Disabled'}
-                            </label>
-                        )}
-                    </div>
+                    <PrimitiveField
+                        key={key}
+                        label={key}
+                        value={value}
+                        onChange={v => handleChange(key, v)}
+                    />
                 );
             })}
         </div>

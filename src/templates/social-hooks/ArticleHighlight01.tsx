@@ -29,7 +29,7 @@ export const articleHighlightSchema = z.object({
     callout2: z.string().default('Look at this number'),
     highlightColor: z.string().default('#FFE135'),
     arrowColor: z.string().default('#FF6B35'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof articleHighlightSchema>;

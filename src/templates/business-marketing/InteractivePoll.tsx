@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const interactivePollSchema = z.object({
     title: z.string().default('What is your biggest marketing challenge?'),
@@ -18,14 +23,15 @@ export const interactivePollSchema = z.object({
         label: z.string(),
         percentage: z.number().min(0).max(100),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { label: 'Generating Leads', percentage: 45, color: '#3b82f6' },
         { label: 'Content Creation', percentage: 30, color: '#10b981' },
         { label: 'Budget Constraints', percentage: 15, color: '#f59e0b' },
         { label: 'Attribution', percentage: 10, color: '#ef4444' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     barBgColor: z.string().default('rgba(255,255,255,0.1)'),
 });
 
@@ -42,6 +48,7 @@ export const InteractivePoll: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -54,7 +61,7 @@ export const InteractivePoll: React.FC<Props> = ({
     const sortedOptions = [...options].sort((a, b) => b.percentage - a.percentage);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -68,7 +75,7 @@ export const InteractivePoll: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 64 : 72) * scale,
                         margin: 0,
@@ -110,14 +117,14 @@ export const InteractivePoll: React.FC<Props> = ({
                                 <div style={{
                                     fontSize: 24 * scale,
                                     fontWeight: 600,
-                                    color: 'rgba(255,255,255,0.9)',
+                                    color: COLORS.textPrimary,
                                 }}>
                                     {opt.label}
                                 </div>
                                 <div style={{
                                     fontSize: 28 * scale,
                                     fontWeight: 800,
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     color: opt.color,
                                 }}>
                                     {Math.round(currentPercent)}%
@@ -158,7 +165,7 @@ export const InteractivePoll: React.FC<Props> = ({
                 opacity: interpolate(frame - 100, [0, 20], [0, 1], { extrapolateRight: 'clamp' }),
                 fontSize: 24 * scale,
                 fontWeight: 600,
-                color: 'rgba(255,255,255,0.5)',
+                color: COLORS.textMuted,
                 textTransform: 'uppercase',
                 letterSpacing: '0.1em',
             }}>

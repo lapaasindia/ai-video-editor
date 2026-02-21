@@ -31,7 +31,7 @@ export const bilingualOutroSchema = z.object({
     ctaText: z.string().default('Follow for part 2'),
     keywordColor: z.string().default('#FFE135'),
     highlightColor: z.string().default('#00E676'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    backgroundColor: z.string().default(COLORS.bg),
     showGrain: z.boolean().default(true),
 });
 

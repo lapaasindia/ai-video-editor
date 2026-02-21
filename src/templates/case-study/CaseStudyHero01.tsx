@@ -30,6 +30,7 @@ export const caseStudyHeroSchema = z.object({
     imageUrl: z.string().default('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800'),
     logoUrl: z.string().default(''),
     primaryColor: z.string().default(COLORS.accent),
+    backgroundColor: z.string().default(COLORS.bg),
     accentColor: z.string().default(COLORS.accentLight) });
 
 type Props = z.infer<typeof caseStudyHeroSchema>;
@@ -48,7 +49,7 @@ export const CaseStudyHero01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(GRADIENTS.bgMain, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden' }}
         >
             {/* Background image with overlay */}

@@ -28,9 +28,9 @@ export const zoomRevealSchema = z.object({
     caption1: z.string().default('This changed everything'),
     caption2: z.string().default('Here\'s the PROOF'),
     highlightWord: z.string().default('PROOF'),
-    primaryColor: z.string().default('#FF6B35'),
-    accentColor: z.string().default('#00D4FF'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    primaryColor: z.string().default(COLORS.accent),
+    accentColor: z.string().default(COLORS.accent),
+    backgroundColor: z.string().default(COLORS.bg),
     showVignette: z.boolean().default(true),
 });
 

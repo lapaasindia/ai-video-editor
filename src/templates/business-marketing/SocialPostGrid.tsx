@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const socialPostGridSchema = z.object({
     title: z.string().default('Everyone is talking about it'),
@@ -22,6 +27,7 @@ export const socialPostGridSchema = z.object({
         avatarUrl: z.string(),
         likes: z.string(),
         platform: z.enum(['twitter', 'linkedin', 'threads']).default('twitter'),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { 
             username: 'Alex Hormozi', handle: '@AlexHormozi', platform: 'twitter', likes: '14.2K',
@@ -39,9 +45,9 @@ export const socialPostGridSchema = z.object({
             avatarUrl: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=150',
         }
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    cardBgColor: z.string().default('#1e293b'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
 });
 
 type Props = z.infer<typeof socialPostGridSchema>;
@@ -57,6 +63,7 @@ export const SocialPostGrid: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -71,7 +78,7 @@ export const SocialPostGrid: React.FC<Props> = ({
     const colCount = isPortrait ? 1 : Math.min(3, totalPosts);
     
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -86,7 +93,7 @@ export const SocialPostGrid: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -123,7 +130,7 @@ export const SocialPostGrid: React.FC<Props> = ({
                             transform: `translateY(${(1 - pop) * 100 + yOffset}px) scale(${interpolate(pop, [0, 1], [0.9, 1])}) rotate(${(1-pop) * (i%2===0?2:-2)}deg)`,
                             opacity: op,
                             boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: `1px solid ${COLORS.borderLight}`,
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 20 * scale,
@@ -143,7 +150,7 @@ export const SocialPostGrid: React.FC<Props> = ({
                                     <div style={{ fontSize: 20 * scale, fontWeight: 700, color: '#fff' }}>
                                         {post.username}
                                     </div>
-                                    <div style={{ fontSize: 16 * scale, color: 'rgba(255,255,255,0.5)' }}>
+                                    <div style={{ fontSize: 16 * scale, color: COLORS.textMuted }}>
                                         {post.handle}
                                     </div>
                                 </div>
@@ -157,7 +164,7 @@ export const SocialPostGrid: React.FC<Props> = ({
                             <div style={{ 
                                 fontSize: 22 * scale, 
                                 lineHeight: 1.5,
-                                color: 'rgba(255,255,255,0.9)',
+                                color: COLORS.textPrimary,
                             }}>
                                 {post.text}
                             </div>
@@ -167,7 +174,7 @@ export const SocialPostGrid: React.FC<Props> = ({
                                 display: 'flex', 
                                 alignItems: 'center', 
                                 gap: 24 * scale,
-                                color: 'rgba(255,255,255,0.4)',
+                                color: COLORS.textMuted,
                                 fontSize: 16 * scale,
                                 marginTop: 10 * scale,
                             }}>

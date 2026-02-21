@@ -33,6 +33,7 @@ export const startupVisionSchema = z.object({
     showDust: z.boolean().default(true),
     showVignette: z.boolean().default(true),
     enableGrade: z.boolean().default(true),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof startupVisionSchema>;
@@ -67,7 +68,7 @@ export const StartupVision01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(COLORS.bg, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
             }}
         >

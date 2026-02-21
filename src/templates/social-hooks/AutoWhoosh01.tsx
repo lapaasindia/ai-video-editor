@@ -27,7 +27,7 @@ export const autoWhooshSchema = z.object({
     scene3Url: z.string().default('https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1920'),
     ctaText: z.string().default('Follow for more'),
     transitionColor: z.string().default('#00D4FF'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof autoWhooshSchema>;

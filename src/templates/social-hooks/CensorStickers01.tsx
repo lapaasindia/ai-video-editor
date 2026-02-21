@@ -16,6 +16,7 @@ import {
     useResolvedBackgroundControls,
 } from '../../lib/background';
 import { registerTemplate } from '../registry';
+import { COLORS } from '../../lib/theme';
 import { EditableText } from '../../components/EditableText';
 import { interFont } from '../../lib/fonts';
 
@@ -30,8 +31,8 @@ export const censorStickersSchema = z.object({
     sticker2Y: z.number().default(0.4),
     sticker3X: z.number().default(0.5),
     sticker3Y: z.number().default(0.55),
-    primaryColor: z.string().default('#FF6B35'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    primaryColor: z.string().default(COLORS.accent),
+    backgroundColor: z.string().default(COLORS.bg),
     showScanlines: z.boolean().default(true),
 });
 

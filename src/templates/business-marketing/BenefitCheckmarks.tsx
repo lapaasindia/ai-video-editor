@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const benefitCheckmarksSchema = z.object({
     title: z.string().default('What You Get'),
@@ -22,8 +27,8 @@ export const benefitCheckmarksSchema = z.object({
         'Team collaboration workspace',
         '1TB cloud storage included',
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     primaryColor: z.string().default('#22c55e'),
 });
 
@@ -40,6 +45,7 @@ export const BenefitCheckmarks: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -53,7 +59,7 @@ export const BenefitCheckmarks: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -67,7 +73,7 @@ export const BenefitCheckmarks: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 64 : 80) * scale,
                         margin: 0,
@@ -133,7 +139,7 @@ export const BenefitCheckmarks: React.FC<Props> = ({
                             <div style={{
                                 fontSize: (isPortrait ? 28 : 32) * scale,
                                 fontWeight: 600,
-                                color: 'rgba(255,255,255,0.9)',
+                                color: COLORS.textPrimary,
                                 lineHeight: 1.3,
                             }}>
                                 {benefit}

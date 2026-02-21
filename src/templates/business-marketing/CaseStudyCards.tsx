@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const caseStudyCardSchema = z.object({
     title: z.string().default('Case Studies'),
@@ -21,6 +26,7 @@ export const caseStudyCardSchema = z.object({
         metric: z.string(),
         detail: z.string(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { 
             company: 'Acme Corp', logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg',
@@ -35,9 +41,9 @@ export const caseStudyCardSchema = z.object({
             metric: '-40%', detail: 'Reduction in customer churn rate', color: '#eab308'
         }
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    cardBgColor: z.string().default('#1e293b'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
 });
 
 type Props = z.infer<typeof caseStudyCardSchema>;
@@ -53,6 +59,7 @@ export const CaseStudyCards: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -67,7 +74,7 @@ export const CaseStudyCards: React.FC<Props> = ({
     const itemWidth = isPortrait ? availableWidth : (availableWidth - (gap * (totalStudies - 1))) / totalStudies;
     
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -81,7 +88,7 @@ export const CaseStudyCards: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -144,7 +151,7 @@ export const CaseStudyCards: React.FC<Props> = ({
                             <div style={{
                                 fontSize: (isPortrait ? 64 : 80) * scale,
                                 fontWeight: 900,
-                                fontFamily: montserratFont,
+                                fontFamily: interFont,
                                 color: study.color,
                                 marginBottom: 16 * scale,
                                 textShadow: `0 4px 10px ${study.color}40`,
@@ -157,7 +164,7 @@ export const CaseStudyCards: React.FC<Props> = ({
                             <div style={{
                                 fontSize: 20 * scale,
                                 fontWeight: 500,
-                                color: 'rgba(255,255,255,0.9)',
+                                color: COLORS.textPrimary,
                                 lineHeight: 1.4,
                             }}>
                                 {study.detail}

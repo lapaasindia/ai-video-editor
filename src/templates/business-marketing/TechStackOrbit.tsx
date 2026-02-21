@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const techStackOrbitSchema = z.object({
     title: z.string().default('Integrates With Everything'),
@@ -24,8 +29,8 @@ export const techStackOrbitSchema = z.object({
         'https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg',
         'https://upload.wikimedia.org/wikipedia/commons/b/b8/YouTube_Logo_2017.svg',
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     orbitColor: z.string().default('rgba(255,255,255,0.1)'),
 });
 
@@ -43,6 +48,7 @@ export const TechStackOrbit: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -59,7 +65,7 @@ export const TechStackOrbit: React.FC<Props> = ({
     const rotation = interpolate(frame, [0, 300], [0, 360], { extrapolateRight: 'extend' });
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -73,7 +79,7 @@ export const TechStackOrbit: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,

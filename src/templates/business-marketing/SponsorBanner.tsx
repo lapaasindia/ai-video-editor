@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const sponsorBannerSchema = z.object({
     title: z.string().default('Sponsored By'),
@@ -23,8 +28,8 @@ export const sponsorBannerSchema = z.object({
         'https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg',
         'https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg',
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     bannerBgColor: z.string().default('#1e293b'),
     speed: z.number().min(1).max(10).default(3),
 });
@@ -43,6 +48,7 @@ export const SponsorBanner: React.FC<Props> = ({
     const { fps } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -62,7 +68,7 @@ export const SponsorBanner: React.FC<Props> = ({
     const currentOffset = (frame * scrollPixelsPerFrame) % setWidth;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor, justifyContent: 'center' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor, justifyContent: 'center' }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -76,13 +82,13 @@ export const SponsorBanner: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 48 : 60) * scale,
                         margin: 0,
                         letterSpacing: '0.1em',
                         textTransform: 'uppercase',
-                        color: 'rgba(255,255,255,0.7)',
+                        color: COLORS.textSecondary,
                     }}
                 />
             </div>

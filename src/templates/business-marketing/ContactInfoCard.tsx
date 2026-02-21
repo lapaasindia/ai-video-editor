@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const contactInfoCardSchema = z.object({
     title: z.string().default('Let\'s Talk'),
@@ -19,15 +24,16 @@ export const contactInfoCardSchema = z.object({
         type: z.string(),
         value: z.string(),
         icon: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { type: 'Email', value: 'hello@lapaas.com', icon: '✉️' },
         { type: 'Phone', value: '+91 98765 43210', icon: '📞' },
         { type: 'Address', value: 'New Delhi, India', icon: '📍' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    cardBgColor: z.string().default('#1e293b'),
-    accentColor: z.string().default('#3b82f6'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof contactInfoCardSchema>;
@@ -45,6 +51,7 @@ export const ContactInfoCard: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -57,7 +64,7 @@ export const ContactInfoCard: React.FC<Props> = ({
     const cardPop = spring({ frame: frame - 15, fps, config: { damping: 14, mass: 1.2 } });
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor, justifyContent: 'center', alignItems: 'center' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor, justifyContent: 'center', alignItems: 'center' }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -71,7 +78,7 @@ export const ContactInfoCard: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 900,
                         fontSize: (isPortrait ? 80 : 96) * scale,
                         margin: 0,
@@ -152,7 +159,7 @@ export const ContactInfoCard: React.FC<Props> = ({
                                 <div style={{
                                     fontSize: 20 * scale,
                                     fontWeight: 600,
-                                    color: 'rgba(255,255,255,0.5)',
+                                    color: COLORS.textMuted,
                                     textTransform: 'uppercase',
                                     letterSpacing: '0.1em',
                                 }}>
@@ -161,7 +168,7 @@ export const ContactInfoCard: React.FC<Props> = ({
                                 <div style={{
                                     fontSize: (isPortrait ? 32 : 40) * scale,
                                     fontWeight: 800,
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     color: '#fff',
                                     letterSpacing: '0.02em',
                                 }}>

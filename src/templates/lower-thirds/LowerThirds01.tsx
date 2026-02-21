@@ -28,7 +28,7 @@ export const lowerThirdsSchema = z.object({
     primaryColor: z.string().default(COLORS.accent),
     accentColor: z.string().default(COLORS.accentLight),
     backgroundColor: z.string().default(COLORS.bg),
-    textColor: z.string().default('#ffffff'),
+    textColor: z.string().default(COLORS.textPrimary),
 });
 
 type Props = z.infer<typeof lowerThirdsSchema>;
@@ -62,7 +62,7 @@ export const LowerThirds01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground(COLORS.bg, backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
             }}
         >

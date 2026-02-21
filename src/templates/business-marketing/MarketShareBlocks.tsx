@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const marketShareBlocksSchema = z.object({
     title: z.string().default('Market Dominance'),
@@ -19,14 +24,15 @@ export const marketShareBlocksSchema = z.object({
         company: z.string(),
         percentage: z.number(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { company: 'Google', percentage: 88, color: '#3b82f6' },
         { company: 'Bing', percentage: 7, color: '#10b981' },
         { company: 'Yahoo', percentage: 3, color: '#8b5cf6' },
         { company: 'Other', percentage: 2, color: '#64748b' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
 });
 
 type Props = z.infer<typeof marketShareBlocksSchema>;
@@ -42,6 +48,7 @@ export const MarketShareBlocks: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -61,7 +68,7 @@ export const MarketShareBlocks: React.FC<Props> = ({
     const flexDirection = isPortrait ? 'column' : 'row';
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -75,7 +82,7 @@ export const MarketShareBlocks: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -148,7 +155,7 @@ export const MarketShareBlocks: React.FC<Props> = ({
                                     <div style={{
                                         fontSize: (isPortrait ? 48 : 64) * scale,
                                         fontWeight: 900,
-                                        fontFamily: montserratFont,
+                                        fontFamily: interFont,
                                         color: '#fff',
                                         textShadow: '0 4px 10px rgba(0,0,0,0.3)',
                                     }}>
@@ -157,7 +164,7 @@ export const MarketShareBlocks: React.FC<Props> = ({
                                     <div style={{
                                         fontSize: (isPortrait ? 20 : 28) * scale,
                                         fontWeight: 700,
-                                        color: 'rgba(255,255,255,0.9)',
+                                        color: COLORS.textPrimary,
                                         textTransform: 'uppercase',
                                         letterSpacing: '0.05em',
                                     }}>
@@ -185,7 +192,7 @@ export const MarketShareBlocks: React.FC<Props> = ({
                 {sortedShares.filter(s => (s.percentage / totalPercentage) * 100 < 10).map((share, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 * scale }}>
                         <div style={{ width: 16 * scale, height: 16 * scale, borderRadius: '50%', backgroundColor: share.color }} />
-                        <div style={{ fontSize: 16 * scale, color: 'rgba(255,255,255,0.7)' }}>
+                        <div style={{ fontSize: 16 * scale, color: COLORS.textSecondary }}>
                             {share.company} ({share.percentage}%)
                         </div>
                     </div>

@@ -11,16 +11,21 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const teamQuoteSchema = z.object({
     quote: z.string().default('Innovation distinguishes between a leader and a follower.'),
     author: z.string().default('Steve Jobs'),
     role: z.string().default('Co-founder, Apple'),
     avatarUrl: z.string().default('https://images.unsplash.com/photo-1550525811-e5869dd03032?w=300'),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    accentColor: z.string().default('#3b82f6'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof teamQuoteSchema>;
@@ -29,15 +34,15 @@ export const TeamQuote: React.FC<Props> = ({
     quote,
     author,
     role,
-    avatarUrl,
-    backgroundColor,
-    textColor,
+    avatarUrl,    textColor,
     accentColor,
+    backgroundColor,
 }) => {
     const frame = useCurrentFrame();
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -47,7 +52,7 @@ export const TeamQuote: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor, justifyContent: 'center', alignItems: 'center' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor, justifyContent: 'center', alignItems: 'center' }}>
             <div style={{
                 width: availableWidth,
                 maxWidth: 1200 * scale,
@@ -77,7 +82,7 @@ export const TeamQuote: React.FC<Props> = ({
                 <EditableText
                     text={`"${quote}"`}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         lineHeight: 1.3,
@@ -116,7 +121,7 @@ export const TeamQuote: React.FC<Props> = ({
                         <div style={{
                             fontSize: 32 * scale,
                             fontWeight: 800,
-                            fontFamily: montserratFont,
+                            fontFamily: interFont,
                             color: '#fff',
                         }}>
                             {author}

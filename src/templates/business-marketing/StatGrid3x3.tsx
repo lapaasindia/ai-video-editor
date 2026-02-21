@@ -10,13 +10,19 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const statGridSchema = z.object({
     title: z.string().default('Platform Scale'),
     stats: z.array(z.object({
         value: z.string(),
         label: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { value: '50M+', label: 'API Requests / Day' },
         { value: '99.99%', label: 'Guaranteed Uptime' },
@@ -25,9 +31,9 @@ export const statGridSchema = z.object({
         { value: 'Zero', label: 'Maintenance Windows' },
         { value: 'SOC2', label: 'Type II Certified' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    accentColor: z.string().default('#8b5cf6'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof statGridSchema>;
@@ -43,6 +49,7 @@ export const StatGrid3x3: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -58,7 +65,7 @@ export const StatGrid3x3: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -72,7 +79,7 @@ export const StatGrid3x3: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -103,7 +110,7 @@ export const StatGrid3x3: React.FC<Props> = ({
                     
                     return (
                         <div key={i} style={{
-                            backgroundColor: 'rgba(255,255,255,0.03)',
+                            backgroundColor: COLORS.surface,
                             border: `1px solid ${accentColor}40`,
                             borderRadius: 24 * scale,
                             padding: isPortrait ? 30 * scale : 50 * scale,
@@ -136,7 +143,7 @@ export const StatGrid3x3: React.FC<Props> = ({
                             <div style={{
                                 fontSize: (isPortrait ? 48 : 72) * scale,
                                 fontWeight: 900,
-                                fontFamily: montserratFont,
+                                fontFamily: interFont,
                                 color: '#fff',
                                 marginBottom: 16 * scale,
                                 zIndex: 1,
@@ -148,7 +155,7 @@ export const StatGrid3x3: React.FC<Props> = ({
                             <div style={{
                                 fontSize: (isPortrait ? 16 : 20) * scale,
                                 fontWeight: 500,
-                                color: 'rgba(255,255,255,0.7)',
+                                color: COLORS.textSecondary,
                                 zIndex: 1,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.1em',

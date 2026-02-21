@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const marketingFlywheelSchema = z.object({
     title: z.string().default('The Marketing Flywheel'),
@@ -18,6 +23,7 @@ export const marketingFlywheelSchema = z.object({
         label: z.string(),
         color: z.string(),
         icon: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { label: 'Attract', color: '#ef4444', icon: '🧲' },
         { label: 'Engage', color: '#eab308', icon: '🤝' },
@@ -41,6 +47,7 @@ export const FlywheelModel: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -55,7 +62,7 @@ export const FlywheelModel: React.FC<Props> = ({
     const rotation = interpolate(frame, [0, 300], [0, 360], { extrapolateRight: 'extend' });
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -69,7 +76,7 @@ export const FlywheelModel: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -138,7 +145,7 @@ export const FlywheelModel: React.FC<Props> = ({
                         transform: `rotate(${-rotation}deg)`,
                         fontSize: 48 * scale,
                         fontWeight: 900,
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         color: textColor,
                     }}>
                         {centerText}
@@ -181,7 +188,7 @@ export const FlywheelModel: React.FC<Props> = ({
                             fontSize: 24 * scale, 
                             fontWeight: 800, 
                             color: seg.color,
-                            fontFamily: montserratFont,
+                            fontFamily: interFont,
                             textTransform: 'uppercase',
                             letterSpacing: '0.05em'
                         }}>

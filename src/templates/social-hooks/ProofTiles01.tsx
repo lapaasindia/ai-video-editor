@@ -30,9 +30,9 @@ export const proofTilesSchema = z.object({
     tile2Tag: z.string().default('Users 10M+'),
     tile3Url: z.string().default('https://images.unsplash.com/photo-1553877522-43269d4ea984?w=600'),
     tile3Tag: z.string().default('5-Star Rating'),
-    primaryColor: z.string().default('#00D4FF'),
-    accentColor: z.string().default('#FF6B35'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    primaryColor: z.string().default(COLORS.accent),
+    accentColor: z.string().default(COLORS.accent),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof proofTilesSchema>;

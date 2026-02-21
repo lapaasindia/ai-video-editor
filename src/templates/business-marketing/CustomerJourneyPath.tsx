@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const customerJourneySchema = z.object({
     title: z.string().default('Customer Journey Map'),
@@ -18,6 +23,7 @@ export const customerJourneySchema = z.object({
         title: z.string(),
         subtitle: z.string(),
         icon: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { title: 'Discovery', subtitle: 'Sees an ad on Instagram', icon: '📱' },
         { title: 'Consideration', subtitle: 'Reads a blog post', icon: '📖' },
@@ -28,7 +34,7 @@ export const customerJourneySchema = z.object({
     backgroundColor: z.string().default('#f8fafc'),
     textColor: z.string().default('#0f172a'),
     lineColor: z.string().default('#cbd5e1'),
-    accentColor: z.string().default('#2563eb'),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof customerJourneySchema>;
@@ -45,6 +51,7 @@ export const CustomerJourneyPath: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -64,7 +71,7 @@ export const CustomerJourneyPath: React.FC<Props> = ({
     const currentPathLength = pathDrawProgress * pathHeight;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, padding: 60 * scale, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), padding: 60 * scale, fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -78,7 +85,7 @@ export const CustomerJourneyPath: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -177,7 +184,7 @@ export const CustomerJourneyPath: React.FC<Props> = ({
                                 fontSize: 24 * scale, 
                                 fontWeight: 800, 
                                 color: textColor,
-                                fontFamily: montserratFont
+                                fontFamily: interFont
                             }}>
                                 {point.title}
                             </div>

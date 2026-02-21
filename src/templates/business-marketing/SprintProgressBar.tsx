@@ -10,13 +10,19 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const sprintProgressBarSchema = z.object({
     title: z.string().default('Q4 Product Roadmap'),
     sprints: z.array(z.object({
         name: z.string(),
         status: z.enum(['done', 'active', 'pending']),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { name: 'User Auth', status: 'done' },
         { name: 'Dashboard UI', status: 'done' },
@@ -24,8 +30,8 @@ export const sprintProgressBarSchema = z.object({
         { name: 'Analytics Beta', status: 'pending' },
         { name: 'Public Launch', status: 'pending' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     doneColor: z.string().default('#10b981'), // Green
     activeColor: z.string().default('#3b82f6'), // Blue
     pendingColor: z.string().default('rgba(255,255,255,0.1)'), // Gray
@@ -46,6 +52,7 @@ export const SprintProgressBar: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -75,7 +82,7 @@ export const SprintProgressBar: React.FC<Props> = ({
     const currentFillWidth = fillProgress * targetFillWidth;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -89,7 +96,7 @@ export const SprintProgressBar: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -175,7 +182,7 @@ export const SprintProgressBar: React.FC<Props> = ({
                                 <div style={{ 
                                     fontSize: 18 * scale, 
                                     fontWeight: 700, 
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     color: hasReached && sprint.status !== 'pending' ? '#fff' : 'rgba(255,255,255,0.4)',
                                     transition: 'color 0.2s',
                                 }}>

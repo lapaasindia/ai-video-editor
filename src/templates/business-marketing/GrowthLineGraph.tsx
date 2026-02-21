@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const growthLineGraphSchema = z.object({
     title: z.string().default('Active Users'),
@@ -18,6 +23,7 @@ export const growthLineGraphSchema = z.object({
     points: z.array(z.object({
         label: z.string(),
         value: z.number(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { label: 'Jan', value: 10 },
         { label: 'Feb', value: 15 },
@@ -27,8 +33,8 @@ export const growthLineGraphSchema = z.object({
         { label: 'Jun', value: 95 },
         { label: 'Jul', value: 150 },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     lineColor: z.string().default('#10b981'),
     gridColor: z.string().default('rgba(255,255,255,0.1)'),
 });
@@ -48,6 +54,7 @@ export const GrowthLineGraph: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -87,7 +94,7 @@ export const GrowthLineGraph: React.FC<Props> = ({
     const fillPathD = `${pathD} L ${chartWidth} 0 L 0 0 Z`;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -101,7 +108,7 @@ export const GrowthLineGraph: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -142,7 +149,7 @@ export const GrowthLineGraph: React.FC<Props> = ({
                             left: -60 * scale,
                             top: -10 * scale,
                             fontSize: 16 * scale,
-                            color: 'rgba(255,255,255,0.5)',
+                            color: COLORS.textMuted,
                             textAlign: 'right',
                             width: 50 * scale,
                         }}>
@@ -168,7 +175,7 @@ export const GrowthLineGraph: React.FC<Props> = ({
                             textAlign: 'center',
                             fontSize: 16 * scale,
                             fontWeight: 600,
-                            color: 'rgba(255,255,255,0.7)',
+                            color: COLORS.textSecondary,
                         }}>
                             {p.label}
                         </div>
@@ -253,7 +260,7 @@ export const GrowthLineGraph: React.FC<Props> = ({
                                         fill={backgroundColor}
                                         fontSize={16 * scale}
                                         fontWeight="bold"
-                                        fontFamily={montserratFont}
+                                        fontFamily={interFont}
                                     >
                                         {p.value}
                                     </text>

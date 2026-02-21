@@ -8,6 +8,10 @@ import {
     } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
 import { registerTemplate } from '../registry';
 import { interFont } from '../../lib/fonts';
 
@@ -33,7 +37,6 @@ export const ReviewMockup: React.FC<Props> = ({
     title,
     content,
     date,
-    backgroundColor,
     textColor,
 }) => {
     const frame = useCurrentFrame();
@@ -41,6 +44,7 @@ export const ReviewMockup: React.FC<Props> = ({
     
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
+    const backgroundControls = useResolvedBackgroundControls();
 
     const pop = spring({ frame: frame - 15, fps, config: { damping: 14, mass: 1.2 } });
     const op = interpolate(frame - 15, [0, 10], [0, 1], { extrapolateRight: 'clamp' });
@@ -60,7 +64,7 @@ export const ReviewMockup: React.FC<Props> = ({
     }
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground('#f8f9fa', backgroundControls), fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
             <div style={{
                 width: cardWidth,
                 backgroundColor: '#ffffff',

@@ -32,9 +32,9 @@ export const collagePiPSchema = z.object({
     pipImageUrl: z.string().default('https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400'),
     subtitle1: z.string().default('Multiple factors'),
     subtitle2: z.string().default('lead to success'),
-    primaryColor: z.string().default('#00D4FF'),
-    accentColor: z.string().default('#FF6B35'),
-    backgroundColor: z.string().default('#0A0A0F'),
+    primaryColor: z.string().default(COLORS.accent),
+    accentColor: z.string().default(COLORS.accent),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof collagePiPSchema>;

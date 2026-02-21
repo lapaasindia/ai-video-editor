@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const dynamicDonutChartSchema = z.object({
     title: z.string().default('Revenue by Channel'),
@@ -19,14 +24,15 @@ export const dynamicDonutChartSchema = z.object({
         label: z.string(),
         value: z.number(), // will be converted to percentage
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { label: 'Organic Search', value: 45, color: '#3b82f6' },
         { label: 'Paid Ads', value: 25, color: '#f43f5e' },
         { label: 'Direct', value: 20, color: '#10b981' },
         { label: 'Referral', value: 10, color: '#eab308' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     centerText: z.string().default('$12.4M'),
 });
 
@@ -44,6 +50,7 @@ export const DynamicDonutChart: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -64,7 +71,7 @@ export const DynamicDonutChart: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -78,7 +85,7 @@ export const DynamicDonutChart: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -151,7 +158,7 @@ export const DynamicDonutChart: React.FC<Props> = ({
                     <div style={{
                         fontSize: 48 * scale,
                         fontWeight: 900,
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         color: textColor,
                     }}>
                         {centerText}
@@ -182,7 +189,7 @@ export const DynamicDonutChart: React.FC<Props> = ({
                             justifyContent: 'space-between',
                             transform: `translateX(${(1 - pop) * 40}px)`,
                             opacity: pop,
-                            backgroundColor: 'rgba(255,255,255,0.05)',
+                            backgroundColor: COLORS.surfaceLight,
                             padding: `${16 * scale}px ${24 * scale}px`,
                             borderRadius: 16 * scale,
                             borderLeft: `6px solid ${seg.color}`,
@@ -191,7 +198,7 @@ export const DynamicDonutChart: React.FC<Props> = ({
                                 <div style={{ 
                                     fontSize: 24 * scale, 
                                     fontWeight: 700, 
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     width: 60 * scale,
                                 }}>
                                     {percentage}%

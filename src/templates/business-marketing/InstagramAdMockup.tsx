@@ -9,6 +9,10 @@ import {
 } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
 import { registerTemplate } from '../registry';
 import { interFont } from '../../lib/fonts';
 
@@ -40,6 +44,7 @@ export const InstagramAdMockup: React.FC<Props> = ({
     
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
+    const backgroundControls = useResolvedBackgroundControls();
 
     const pop = spring({ frame: frame - 10, fps, config: { damping: 14 } });
     const op = interpolate(frame - 10, [0, 10], [0, 1], { extrapolateRight: 'clamp' });
@@ -49,7 +54,7 @@ export const InstagramAdMockup: React.FC<Props> = ({
     const cardHeight = isPortrait ? height * 0.8 : 800 * scale;
 
     return (
-        <AbsoluteFill style={{ backgroundColor: '#0f172a', fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground('#0f172a', backgroundControls), fontFamily: interFont, alignItems: 'center', justifyContent: 'center' }}>
             {/* Dark background blur for effect */}
             <div style={{
                 position: 'absolute',

@@ -9,6 +9,10 @@ import {
 } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
 import { registerTemplate } from '../registry';
 import { interFont } from '../../lib/fonts';
 
@@ -50,6 +54,7 @@ export const IMessageMockup: React.FC<Props> = ({
     
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
+    const backgroundControls = useResolvedBackgroundControls();
 
         const phoneWidth = isPortrait ? width : 450 * scale;
     const phoneHeight = isPortrait ? 1920 : 850 * scale;
@@ -62,7 +67,7 @@ export const IMessageMockup: React.FC<Props> = ({
             <div style={{
                 width: phoneWidth,
                 height: phoneHeight,
-                backgroundColor: '#000000',
+                background: resolveCanvasBackground('#000000', backgroundControls),
                 borderRadius: isPortrait ? 0 : 40 * scale,
                 border: isPortrait ? 'none' : `12px solid #1a1a1a`,
                 display: 'flex',

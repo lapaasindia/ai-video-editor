@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const verticalTimelineSchema = z.object({
     title: z.string().default('Company History'),
@@ -18,6 +23,7 @@ export const verticalTimelineSchema = z.object({
         date: z.string(),
         title: z.string(),
         desc: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { date: '2020', title: 'Founded', desc: 'Started in a small garage in San Francisco.' },
         { date: '2021', title: 'Seed Funding', desc: 'Raised $2M to build the MVP.' },
@@ -25,8 +31,8 @@ export const verticalTimelineSchema = z.object({
         { date: '2023', title: 'Series A', desc: 'Raised $15M to scale the team globally.' },
         { date: '2024', title: '1M Users', desc: 'Crossed the 1 million active users milestone.' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     primaryColor: z.string().default('#f43f5e'),
 });
 
@@ -43,6 +49,7 @@ export const VerticalTimeline: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -63,7 +70,7 @@ export const VerticalTimeline: React.FC<Props> = ({
     const currentLineHeight = lineProgress * pathHeight;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -77,7 +84,7 @@ export const VerticalTimeline: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -180,7 +187,7 @@ export const VerticalTimeline: React.FC<Props> = ({
                                 fontSize: 20 * scale, 
                                 fontWeight: 800, 
                                 color: primaryColor,
-                                fontFamily: montserratFont,
+                                fontFamily: interFont,
                                 letterSpacing: '0.1em',
                             }}>
                                 {event.date}
@@ -189,13 +196,13 @@ export const VerticalTimeline: React.FC<Props> = ({
                                 fontSize: 28 * scale, 
                                 fontWeight: 700, 
                                 color: textColor,
-                                fontFamily: montserratFont
+                                fontFamily: interFont
                             }}>
                                 {event.title}
                             </div>
                             <div style={{ 
                                 fontSize: 18 * scale, 
-                                color: 'rgba(255,255,255,0.6)',
+                                color: COLORS.textSecondary,
                                 lineHeight: 1.4,
                             }}>
                                 {event.desc}

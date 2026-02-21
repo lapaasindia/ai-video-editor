@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 // A multi-series bar chart (like the OLA financials example)
 export const financialBarChartSchema = z.object({
@@ -24,6 +29,7 @@ export const financialBarChartSchema = z.object({
         values: z.array(z.number()),
         highlightPercentage: z.string().optional(), // e.g. "+100.4%"
         highlightColor: z.string().optional(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { 
             name: 'Operating Revenue', 
@@ -73,6 +79,7 @@ export const FinancialBarChart: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -125,7 +132,7 @@ export const FinancialBarChart: React.FC<Props> = ({
     ];
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header (Logo + Title) */}
             <div style={{
                 position: 'absolute',
@@ -143,7 +150,7 @@ export const FinancialBarChart: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 900,
                         fontSize: (isPortrait ? 48 : 64) * scale,
                         margin: 0,
@@ -315,7 +322,7 @@ export const FinancialBarChart: React.FC<Props> = ({
                                                 [isPositive ? 'top' : 'bottom']: -25 * scale,
                                                 fontSize: 16 * scale,
                                                 fontWeight: 800,
-                                                fontFamily: montserratFont,
+                                                fontFamily: interFont,
                                                 color: '#111',
                                                 opacity: interpolate(grow, [0.8, 1], [0, 1], { extrapolateRight: 'clamp' }),
                                             }}>

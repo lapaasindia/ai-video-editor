@@ -8,6 +8,10 @@ import {
     } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
 import { registerTemplate } from '../registry';
 import { interFont } from '../../lib/fonts';
 
@@ -40,6 +44,7 @@ export const GoogleSearchMockup: React.FC<Props> = ({
     
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
+    const backgroundControls = useResolvedBackgroundControls();
 
     const paddingX = isPortrait ? 40 * scale : 120 * scale;
     const availableWidth = width - (paddingX * 2);
@@ -58,7 +63,7 @@ export const GoogleSearchMockup: React.FC<Props> = ({
             <div style={{
                 position: 'absolute',
                 top: 0, left: 0, right: 0,
-                backgroundColor: '#ffffff',
+                background: resolveCanvasBackground('#ffffff', backgroundControls),
                 borderBottom: isSearchComplete ? '1px solid #dfe1e5' : 'none',
                 padding: isPortrait ? `${40 * scale}px ${paddingX}px ${20 * scale}px` : `${30 * scale}px ${paddingX}px`,
                 display: 'flex',

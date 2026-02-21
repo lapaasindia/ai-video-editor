@@ -32,6 +32,7 @@ export const techInnovationSchema = z.object({
     secondaryColor: z.string().default(COLORS.accentDark), // Neon Pink
     showGrid: z.boolean().default(true),
     enableGlow: z.boolean().default(true),
+    backgroundColor: z.string().default(COLORS.bg),
 });
 
 type Props = z.infer<typeof techInnovationSchema>;
@@ -68,7 +69,7 @@ export const TechInnovation01: React.FC<Props> = (props) => {
     return (
         <AbsoluteFill
             style={{
-                background: resolveCanvasBackground('#050510', backgroundControls),
+                background: resolveCanvasBackground(props.backgroundColor, backgroundControls),
                 overflow: 'hidden',
                 perspective: 1000,
             }}

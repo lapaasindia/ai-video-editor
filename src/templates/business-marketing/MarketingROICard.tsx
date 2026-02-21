@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const marketingRoiSchema = z.object({
     title: z.string().default('Q3 Marketing ROI'),
@@ -21,15 +26,16 @@ export const marketingRoiSchema = z.object({
         trend: z.number(), // positive is good, negative is bad
         icon: z.string(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { label: 'Total Spend', value: '$45,000', trend: 5.2, icon: '💸', color: '#64748b' },
         { label: 'New Leads', value: '2,845', trend: 14.8, icon: '🎯', color: '#3b82f6' },
         { label: 'Conversions', value: '412', trend: 22.4, icon: '🏆', color: '#10b981' },
         { label: 'Cost Per Acq', value: '$109', trend: -8.5, icon: '📉', color: '#8b5cf6' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#f8fafc'),
-    cardBgColor: z.string().default('#1e293b'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    cardBgColor: z.string().default(COLORS.surface),
 });
 
 type Props = z.infer<typeof marketingRoiSchema>;
@@ -46,6 +52,7 @@ export const MarketingROICard: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -62,7 +69,7 @@ export const MarketingROICard: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -75,7 +82,7 @@ export const MarketingROICard: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -147,7 +154,7 @@ export const MarketingROICard: React.FC<Props> = ({
                                 <span style={{ 
                                     fontSize: 18 * scale, 
                                     fontWeight: 600, 
-                                    color: 'rgba(255,255,255,0.7)',
+                                    color: COLORS.textSecondary,
                                     textTransform: 'uppercase',
                                     letterSpacing: '0.05em'
                                 }}>
@@ -171,7 +178,7 @@ export const MarketingROICard: React.FC<Props> = ({
                                 <span style={{ 
                                     fontSize: (isPortrait ? 48 : 56) * scale, 
                                     fontWeight: 800, 
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     letterSpacing: '-0.02em',
                                     color: '#fff',
                                 }}>

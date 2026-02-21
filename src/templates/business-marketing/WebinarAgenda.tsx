@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const webinarAgendaSchema = z.object({
     title: z.string().default('Summit 2024'),
@@ -19,6 +24,7 @@ export const webinarAgendaSchema = z.object({
         time: z.string(),
         title: z.string(),
         speaker: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { time: '09:00 AM', title: 'Opening Keynote', speaker: 'CEO Jane Doe' },
         { time: '10:30 AM', title: 'The Future of AI', speaker: 'Dr. Alan Turing' },
@@ -26,9 +32,9 @@ export const webinarAgendaSchema = z.object({
         { time: '03:15 PM', title: 'Product Deep Dive', speaker: 'Product Team' },
         { time: '05:00 PM', title: 'Closing Remarks', speaker: 'VP of Marketing' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
-    accentColor: z.string().default('#facc15'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
+    accentColor: z.string().default(COLORS.accent),
 });
 
 type Props = z.infer<typeof webinarAgendaSchema>;
@@ -45,6 +51,7 @@ export const WebinarAgenda: React.FC<Props> = ({
     const { fps, width } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -55,7 +62,7 @@ export const WebinarAgenda: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -69,7 +76,7 @@ export const WebinarAgenda: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 900,
                         fontSize: (isPortrait ? 80 : 96) * scale,
                         margin: 0,
@@ -122,7 +129,7 @@ export const WebinarAgenda: React.FC<Props> = ({
                             <div style={{
                                 fontSize: 24 * scale,
                                 fontWeight: 800,
-                                fontFamily: montserratFont,
+                                fontFamily: interFont,
                                 color: accentColor,
                                 width: isPortrait ? 'auto' : 160 * scale,
                                 flexShrink: 0,
@@ -142,7 +149,7 @@ export const WebinarAgenda: React.FC<Props> = ({
                                 </div>
                                 <div style={{
                                     fontSize: 20 * scale,
-                                    color: 'rgba(255,255,255,0.6)',
+                                    color: COLORS.textSecondary,
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: 12 * scale,

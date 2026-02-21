@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const dynamicBarChartSchema = z.object({
     title: z.string().default('Revenue Growth'),
@@ -19,6 +24,7 @@ export const dynamicBarChartSchema = z.object({
         label: z.string(),
         value: z.number(),
         color: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { label: '2020', value: 2.4, color: '#3b82f6' },
         { label: '2021', value: 4.8, color: '#6366f1' },
@@ -26,8 +32,8 @@ export const dynamicBarChartSchema = z.object({
         { label: '2023', value: 18.2, color: '#a855f7' },
         { label: '2024', value: 34.5, color: '#d946ef' },
     ]),
-    backgroundColor: z.string().default('#0f172a'),
-    textColor: z.string().default('#ffffff'),
+    backgroundColor: z.string().default(COLORS.bg),
+    textColor: z.string().default(COLORS.textPrimary),
     axisColor: z.string().default('rgba(255,255,255,0.2)'),
 });
 
@@ -45,6 +51,7 @@ export const DynamicBarChart: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -64,7 +71,7 @@ export const DynamicBarChart: React.FC<Props> = ({
     const barWidth = (availableWidth - (barSpacing * (totalBars - 1))) / totalBars;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -78,7 +85,7 @@ export const DynamicBarChart: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -111,19 +118,19 @@ export const DynamicBarChart: React.FC<Props> = ({
                 {/* Y-Axis Labels (Max, Mid, Zero) */}
                 <div style={{
                     position: 'absolute', top: -10 * scale, left: -40 * scale,
-                    fontSize: 16 * scale, color: 'rgba(255,255,255,0.5)',
+                    fontSize: 16 * scale, color: COLORS.textMuted,
                 }}>
                     {Math.ceil(maxValue)}
                 </div>
                 <div style={{
                     position: 'absolute', top: chartHeight / 2 - 10 * scale, left: -40 * scale,
-                    fontSize: 16 * scale, color: 'rgba(255,255,255,0.5)',
+                    fontSize: 16 * scale, color: COLORS.textMuted,
                 }}>
                     {Math.ceil(maxValue / 2)}
                 </div>
                 <div style={{
                     position: 'absolute', bottom: 10 * scale, left: -40 * scale,
-                    fontSize: 16 * scale, color: 'rgba(255,255,255,0.5)',
+                    fontSize: 16 * scale, color: COLORS.textMuted,
                 }}>
                     0
                 </div>
@@ -164,7 +171,7 @@ export const DynamicBarChart: React.FC<Props> = ({
                                 textAlign: 'center',
                                 fontSize: 24 * scale,
                                 fontWeight: 800,
-                                fontFamily: montserratFont,
+                                fontFamily: interFont,
                                 opacity: grow, // fade in as it grows
                                 color: '#fff',
                             }}>
@@ -179,7 +186,7 @@ export const DynamicBarChart: React.FC<Props> = ({
                                 textAlign: 'center',
                                 fontSize: 18 * scale,
                                 fontWeight: 600,
-                                color: 'rgba(255,255,255,0.7)',
+                                color: COLORS.textSecondary,
                             }}>
                                 {point.label}
                             </div>

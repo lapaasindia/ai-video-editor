@@ -10,7 +10,12 @@ import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { COLORS } from '../../lib/theme';
+import {
+    resolveCanvasBackground,
+    useResolvedBackgroundControls,
+} from '../../lib/background';
+import { interFont } from '../../lib/fonts';
 
 export const stepByStepProcessSchema = z.object({
     title: z.string().default('How It Works'),
@@ -18,6 +23,7 @@ export const stepByStepProcessSchema = z.object({
         title: z.string(),
         desc: z.string(),
         icon: z.string(),
+    backgroundColor: z.string().default(COLORS.bg),
     })).default([
         { title: 'Create Account', desc: 'Sign up in under 60 seconds. No credit card required.', icon: '📝' },
         { title: 'Connect Data', desc: 'Securely sync your analytics and CRM platforms.', icon: '🔗' },
@@ -42,6 +48,7 @@ export const StepByStepProcess: React.FC<Props> = ({
     const { fps, width, height } = useVideoConfig();
     
     const scale = useScaleFactor();
+    const backgroundControls = useResolvedBackgroundControls();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
@@ -57,7 +64,7 @@ export const StepByStepProcess: React.FC<Props> = ({
     const stepWidth = isPortrait ? availableWidth : (availableWidth - (gap * (totalSteps - 1))) / totalSteps;
 
     return (
-        <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
+        <AbsoluteFill style={{ background: resolveCanvasBackground(backgroundColor, backgroundControls), fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
@@ -71,7 +78,7 @@ export const StepByStepProcess: React.FC<Props> = ({
                 <EditableText
                     text={title}
                     style={{
-                        fontFamily: montserratFont,
+                        fontFamily: interFont,
                         fontWeight: 800,
                         fontSize: (isPortrait ? 60 : 72) * scale,
                         margin: 0,
@@ -161,7 +168,7 @@ export const StepByStepProcess: React.FC<Props> = ({
                                     justifyContent: 'center',
                                     fontSize: 16 * scale,
                                     fontWeight: 800,
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                 }}>
                                     {i + 1}
                                 </div>
@@ -178,7 +185,7 @@ export const StepByStepProcess: React.FC<Props> = ({
                                 <div style={{
                                     fontSize: 24 * scale,
                                     fontWeight: 800,
-                                    fontFamily: montserratFont,
+                                    fontFamily: interFont,
                                     color: textColor,
                                 }}>
                                     {step.title}
