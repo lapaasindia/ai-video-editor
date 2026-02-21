@@ -43,6 +43,7 @@ export const CustomerJourneyPath: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -196,10 +197,11 @@ export const CustomerJourneyPath: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'customer-journey-path-01',
     name: 'Customer Journey Path',
     description: 'A step-by-step roadmap animation that dynamically draws a path through N touchpoints.',
-    category: 'marketing-sales',
+    category: 'business-marketing',
     durationInFrames: 180,
     fps: 30,
     component: CustomerJourneyPath,

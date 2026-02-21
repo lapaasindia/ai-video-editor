@@ -38,15 +38,15 @@ export const MultiLinkOutro: React.FC<Props> = ({
     textColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
     const titleY = spring({ frame, fps, config: { damping: 12 } });
     const titleOpacity = interpolate(frame, [0, 15], [0, 1], { extrapolateRight: 'clamp' });
 
-    const totalLinks = links.length;
-    const paddingX = isPortrait ? 60 * scale : 120 * scale;
+        const paddingX = isPortrait ? 60 * scale : 120 * scale;
     const availableWidth = width - (paddingX * 2);
 
     return (
@@ -141,6 +141,7 @@ export const MultiLinkOutro: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'multi-link-outro-01',
     name: 'Multi-Link End Screen',
     description: 'An outro card displaying multiple calls to action and links neatly stacked.',

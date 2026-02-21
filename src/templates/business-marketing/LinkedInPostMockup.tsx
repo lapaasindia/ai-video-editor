@@ -37,10 +37,10 @@ export const LinkedInPostMockup: React.FC<Props> = ({
     commentsCount,
     repostsCount,
     backgroundColor,
-    textColor,
-}) => {
+    }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -168,6 +168,7 @@ export const LinkedInPostMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'linkedin-post-mockup-01',
     name: 'LinkedIn Post Mockup',
     description: 'A professional B2B LinkedIn post mockup, perfect for business marketing.',

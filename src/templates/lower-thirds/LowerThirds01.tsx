@@ -7,7 +7,7 @@ import {
     spring,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
+import { useIsPortrait, useScaleFactor } from "../../lib/responsive";
 
 import { EditableText } from '../../components/EditableText';
 import { AnimatedGradient } from '../../components/AnimatedGradient';
@@ -38,6 +38,7 @@ export const LowerThirds01: React.FC<Props> = (props) => {
     const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
+    
     const isPortrait = useIsPortrait();
     const backgroundControls = useResolvedBackgroundControls();
 

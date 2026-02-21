@@ -38,7 +38,8 @@ export const RedditThreadMockup: React.FC<Props> = ({
     darkMode,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -160,6 +161,7 @@ export const RedditThreadMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'reddit-thread-mockup-01',
     name: 'Reddit Thread Mockup',
     description: 'A pixel-perfect Reddit post simulation complete with upvote animations.',

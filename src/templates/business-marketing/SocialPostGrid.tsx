@@ -54,7 +54,8 @@ export const SocialPostGrid: React.FC<Props> = ({
     cardBgColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -68,8 +69,7 @@ export const SocialPostGrid: React.FC<Props> = ({
     
     // For visual interest, we'll place them in a masonry/staggered column layout
     const colCount = isPortrait ? 1 : Math.min(3, totalPosts);
-    const colWidth = (availableWidth - (30 * scale * (colCount - 1))) / colCount;
-
+    
     return (
         <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
             {/* Header */}
@@ -184,10 +184,11 @@ export const SocialPostGrid: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'social-post-grid-01',
     name: 'Social Proof Post Grid',
     description: 'A staggered grid of simulated social media posts popping up to show viral traction.',
-    category: 'social-proof',
+    category: 'business-marketing',
     durationInFrames: 180,
     fps: 30,
     component: SocialPostGrid,

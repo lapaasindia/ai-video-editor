@@ -40,7 +40,8 @@ export const StatGrid3x3: React.FC<Props> = ({
     accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -163,6 +164,7 @@ export const StatGrid3x3: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'stat-grid-3x3-01',
     name: 'Metric Grid Cards',
     description: 'A clean, modern grid of statistics cards that pop in sequentially. Great for highlighting scale.',

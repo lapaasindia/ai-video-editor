@@ -1155,8 +1155,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             name: `AI Templates (${templatePlacements.length})`,
                             type: 'overlay' as const,
                             clips: templateClips,
-                            muted: false,
-                            locked: false,
+                            isMuted: false,
+                            isLocked: false,
                         }];
                     }
                 }
@@ -1171,14 +1171,14 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         start: (a.startUs ?? i * 7_000_000) / 1_000_000,
                         duration: ((a.endUs ?? 0) - (a.startUs ?? 0)) / 1_000_000 || 5,
                         offset: 0,
-                        type: (a.kind === 'video' ? 'video' : 'image') as const,
+                        type: (a.kind === 'video' ? 'video' : 'image') as 'video' | 'image',
                         name: a.query || `${a.kind || 'media'} ${i + 1}`,
-                        sourceRef: a.localPath || undefined,
+                        sourceRef: (a as any).localPath || undefined,
                         assetData: {
                             kind: a.kind || 'image',
                             query: a.query || '',
                             provider: a.provider || 'pexels',
-                            localPath: a.localPath || '',
+                            localPath: (a as any).localPath || '',
                         },
                     }));
 
@@ -1192,10 +1192,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         next = [...next, {
                             id: assetTrackId,
                             name: `B-Roll / Stock (${stockMedia.length})`,
-                            type: 'broll' as const,
+                            type: 'video' as const,
                             clips: assetClips,
-                            muted: false,
-                            locked: false,
+                            isMuted: false,
+                            isLocked: false,
                         }];
                     }
                 }

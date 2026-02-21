@@ -9,9 +9,8 @@ import {
 } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
-import { EditableText } from '../../components/EditableText';
 import { registerTemplate } from '../registry';
-import { interFont, montserratFont } from '../../lib/fonts';
+import { interFont } from '../../lib/fonts';
 
 export const instagramAdMockupSchema = z.object({
     username: z.string().default('lapaasindia'),
@@ -38,6 +37,7 @@ export const InstagramAdMockup: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -196,6 +196,7 @@ export const InstagramAdMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'instagram-ad-mockup-01',
     name: 'Instagram Ad Mockup',
     description: 'A realistic simulation of an Instagram Feed Ad or post, complete with animated likes.',

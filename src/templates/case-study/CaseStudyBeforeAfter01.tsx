@@ -5,7 +5,7 @@ import {
     interpolate,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
+import { useIsPortrait, useScaleFactor } from "../../lib/responsive";
 import { fadeIn, slideIn } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import { AnimatedGradient } from '../../components/AnimatedGradient';

@@ -48,6 +48,7 @@ type Props = z.infer<typeof cutoutHookSchema>;
 export const CutoutHook01: React.FC<Props> = (props) => {
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
+    
     const isPortrait = useIsPortrait();
     const s = useScaleFactor();
     const backgroundControls = useResolvedBackgroundControls();

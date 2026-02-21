@@ -50,7 +50,8 @@ export const CaseStudyCards: React.FC<Props> = ({
     cardBgColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -170,10 +171,11 @@ export const CaseStudyCards: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'case-study-cards-01',
     name: 'Dynamic Case Study Cards',
     description: 'Flipping 3D cards that display impressive case study metrics for clients.',
-    category: 'social-proof',
+    category: 'business-marketing',
     durationInFrames: 180,
     fps: 30,
     component: CaseStudyCards,

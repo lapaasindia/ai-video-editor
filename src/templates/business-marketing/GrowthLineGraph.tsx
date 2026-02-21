@@ -46,6 +46,7 @@ export const GrowthLineGraph: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -267,6 +268,7 @@ export const GrowthLineGraph: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'growth-line-graph-01',
     name: 'Animated Line Graph',
     description: 'A data visualization graph that draws a line from left to right showing growth over time.',

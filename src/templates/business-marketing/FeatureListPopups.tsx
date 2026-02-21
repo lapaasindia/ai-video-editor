@@ -41,7 +41,8 @@ export const FeatureListPopups: React.FC<Props> = ({
     accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -169,10 +170,11 @@ export const FeatureListPopups: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'feature-list-popups-01',
     name: 'Dynamic Feature Popups',
     description: 'A clean grid of feature cards that sequentially slide up and fade in.',
-    category: 'product-features',
+    category: 'business-marketing',
     durationInFrames: 150,
     fps: 30,
     component: FeatureListPopups,

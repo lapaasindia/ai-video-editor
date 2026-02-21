@@ -42,6 +42,7 @@ export const DynamicDonutChart: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -211,6 +212,7 @@ export const DynamicDonutChart: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'dynamic-donut-chart-01',
     name: 'Dynamic Donut Chart',
     description: 'An animated donut chart that smoothly draws its segments and displays a clean legend.',

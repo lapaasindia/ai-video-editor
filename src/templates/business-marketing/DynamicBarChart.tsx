@@ -43,6 +43,7 @@ export const DynamicBarChart: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -57,8 +58,7 @@ export const DynamicBarChart: React.FC<Props> = ({
     const paddingY = 150 * scale;
     const availableWidth = width - (paddingX * 2);
     const chartHeight = height - (paddingY * 2) - (isPortrait ? 200 * scale : 150 * scale);
-    const startY = height - paddingY;
-
+    
     // Calculate width for each bar
     const barSpacing = isPortrait ? 20 * scale : 40 * scale;
     const barWidth = (availableWidth - (barSpacing * (totalBars - 1))) / totalBars;
@@ -192,6 +192,7 @@ export const DynamicBarChart: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'dynamic-bar-chart-01',
     name: 'Dynamic Bar Chart',
     description: 'A data visualization chart that auto-scales the Y-axis and animates bars upwards sequentially.',

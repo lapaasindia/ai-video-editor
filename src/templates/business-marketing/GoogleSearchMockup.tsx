@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Img,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { registerTemplate } from '../registry';
@@ -38,6 +37,7 @@ export const GoogleSearchMockup: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -193,6 +193,7 @@ export const GoogleSearchMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'google-search-mockup-01',
     name: 'Google Search Mockup',
     description: 'Simulates typing a query into Google and returning a list of search results or ads.',

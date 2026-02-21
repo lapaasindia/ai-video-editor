@@ -13,7 +13,7 @@ export const ProjectPanel: React.FC = () => {
     const [templateSearch, setTemplateSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState<string>('all');
     const [selectedTemplate, setSelectedTemplate] = useState<TemplateMetadata | null>(null);
-    const { currentProject, media, importMedia, backendAvailable, loadProject, pipelineStage, addTemplateClip, addTrack, currentTime, tracks } = useEditor();
+    const { currentProject, media, importMedia, backendAvailable, loadProject, addTemplateClip, addTrack, currentTime, tracks } = useEditor();
 
     const allTemplates = useMemo(() => getTemplateRegistry(), []);
     const filteredTemplates = useMemo(() => {

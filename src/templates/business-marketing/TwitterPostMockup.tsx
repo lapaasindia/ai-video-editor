@@ -44,7 +44,8 @@ export const TwitterPostMockup: React.FC<Props> = ({
     darkMode,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -175,6 +176,7 @@ export const TwitterPostMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'twitter-post-mockup-01',
     name: 'Twitter / X Post Mockup',
     description: 'A pixel-perfect simulation of a viral X post with animated like button.',

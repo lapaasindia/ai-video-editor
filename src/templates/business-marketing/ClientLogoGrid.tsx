@@ -38,7 +38,8 @@ export const ClientLogoGrid: React.FC<Props> = ({
     logoBgColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -129,10 +130,11 @@ export const ClientLogoGrid: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'client-logo-grid-01',
     name: 'Dynamic Client Logo Grid',
     description: 'A responsive grid of partner/client logos that stagger animate in. Auto-adjusts columns.',
-    category: 'social-proof',
+    category: 'business-marketing',
     durationInFrames: 120,
     fps: 30,
     component: ClientLogoGrid,

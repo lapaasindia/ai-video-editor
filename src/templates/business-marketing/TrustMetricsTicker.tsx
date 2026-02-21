@@ -39,7 +39,8 @@ export const TrustMetricsTicker: React.FC<Props> = ({
     accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -150,10 +151,11 @@ export const TrustMetricsTicker: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'trust-metrics-ticker-01',
     name: 'Trust Metrics Grid',
     description: 'A bold, punchy grid of stats/numbers to build instant social proof.',
-    category: 'social-proof',
+    category: 'business-marketing',
     durationInFrames: 150,
     fps: 30,
     component: TrustMetricsTicker,

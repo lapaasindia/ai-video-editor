@@ -43,7 +43,8 @@ export const SpeakerRoster: React.FC<Props> = ({
     cardBgColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -209,6 +210,7 @@ export const SpeakerRoster: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'speaker-roster-01',
     name: 'Event Speaker Roster',
     description: 'A dynamic grid of speaker profiles with avatars, names, titles, and companies.',

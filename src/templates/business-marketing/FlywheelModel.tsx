@@ -39,6 +39,7 @@ export const FlywheelModel: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -194,10 +195,11 @@ export const FlywheelModel: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'flywheel-model-01',
     name: 'Dynamic Marketing Flywheel',
     description: 'An animated circular flywheel that divides itself into slices based on the segments array and rotates continuously.',
-    category: 'marketing-sales',
+    category: 'business-marketing',
     durationInFrames: 240,
     fps: 30,
     component: FlywheelModel,

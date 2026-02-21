@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Img,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
@@ -41,6 +40,7 @@ export const MarketShareBlocks: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -110,8 +110,7 @@ export const MarketShareBlocks: React.FC<Props> = ({
                     const delay = 20 + i * 15;
                     const grow = spring({ frame: frame - delay, fps, config: { damping: 14 } });
                     
-                    const flexBasis = `${normalizedPercent}%`;
-
+                    
                     // For very small segments, hide text if it doesn't fit
                     const isTooSmall = normalizedPercent < 10;
 
@@ -197,6 +196,7 @@ export const MarketShareBlocks: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'market-share-blocks-01',
     name: 'Market Share Blocks',
     description: 'A stacked block diagram showing proportional data, great for market share or demographics.',

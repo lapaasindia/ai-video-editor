@@ -40,7 +40,8 @@ export const SponsorBanner: React.FC<Props> = ({
     speed,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -152,6 +153,7 @@ export const SponsorBanner: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'sponsor-banner-01',
     name: 'Infinite Scrolling Sponsor Banner',
     description: 'A seamless, continuously scrolling ticker tape of sponsor or partner logos.',

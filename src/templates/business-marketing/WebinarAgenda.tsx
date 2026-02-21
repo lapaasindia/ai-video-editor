@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Img,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
@@ -43,7 +42,8 @@ export const WebinarAgenda: React.FC<Props> = ({
     accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -159,6 +159,7 @@ export const WebinarAgenda: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'webinar-agenda-01',
     name: 'Event Schedule/Agenda',
     description: 'A clean list of sessions or schedule items that animate in sequentially.',

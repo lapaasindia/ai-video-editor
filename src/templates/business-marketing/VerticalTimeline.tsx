@@ -41,6 +41,7 @@ export const VerticalTimeline: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -58,8 +59,7 @@ export const VerticalTimeline: React.FC<Props> = ({
     const spacingY = pathHeight / Math.max(1, totalEvents - 1);
 
     // Line draw animation
-    const lineDrawFrames = 60;
-    const lineProgress = spring({ frame: frame - 20, fps, config: { damping: 20, mass: 2 } });
+        const lineProgress = spring({ frame: frame - 20, fps, config: { damping: 20, mass: 2 } });
     const currentLineHeight = lineProgress * pathHeight;
 
     return (
@@ -209,10 +209,11 @@ export const VerticalTimeline: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'vertical-timeline-01',
     name: 'Dynamic Vertical Timeline',
     description: 'A scrolling history timeline that draws a line downwards connecting N events.',
-    category: 'dynamic-timelines',
+    category: 'business-marketing',
     durationInFrames: 210,
     fps: 30,
     component: VerticalTimeline,

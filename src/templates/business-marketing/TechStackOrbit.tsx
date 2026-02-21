@@ -41,6 +41,7 @@ export const TechStackOrbit: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -167,10 +168,11 @@ export const TechStackOrbit: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'tech-stack-orbit-01',
     name: 'Tech Stack Orbit',
     description: 'Dynamic planetary orbit showing integrations circling around a central product logo.',
-    category: 'product-features',
+    category: 'business-marketing',
     durationInFrames: 240,
     fps: 30,
     component: TechStackOrbit,

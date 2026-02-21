@@ -40,6 +40,7 @@ export const StepByStepProcess: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -199,10 +200,11 @@ export const StepByStepProcess: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'step-by-step-process-01',
     name: 'Dynamic Step-by-Step Process',
     description: 'A connected roadmap showing N steps in a process. Draws lines between nodes automatically.',
-    category: 'product-features',
+    category: 'business-marketing',
     durationInFrames: 180,
     fps: 30,
     component: StepByStepProcess,

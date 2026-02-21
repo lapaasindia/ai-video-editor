@@ -43,6 +43,7 @@ type Props = z.infer<typeof caseStudyQuoteSchema>;
 export const CaseStudyQuote01: React.FC<Props> = (props) => {
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
+    
     const isPortrait = useIsPortrait();
     const scale = useResponsive(1, 1);
     const backgroundControls = useResolvedBackgroundControls();

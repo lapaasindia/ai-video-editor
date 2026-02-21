@@ -43,7 +43,8 @@ export const TeamRosterGrid: React.FC<Props> = ({
     cardBgColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -175,6 +176,7 @@ export const TeamRosterGrid: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'team-roster-grid-01',
     name: 'Team Roster Grid',
     description: 'A responsive grid of team members with avatars, names, and roles.',

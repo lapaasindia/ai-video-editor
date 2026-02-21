@@ -41,7 +41,8 @@ export const UsVsThemTable: React.FC<Props> = ({
     accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -207,10 +208,11 @@ export const UsVsThemTable: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'us-vs-them-table-01',
     name: 'Dynamic Us Vs Them Table',
     description: 'A responsive comparison matrix that animates checkmarks and cross marks row by row.',
-    category: 'product-features',
+    category: 'business-marketing',
     durationInFrames: 180,
     fps: 30,
     component: UsVsThemTable,

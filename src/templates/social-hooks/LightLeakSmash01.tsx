@@ -36,6 +36,7 @@ type Props = z.infer<typeof lightLeakSmashSchema>;
 // ─── Component ───────────────────────────────────────────────
 export const LightLeakSmash01: React.FC<Props> = (props) => {
     const frame = useCurrentFrame();
+    
     const isPortrait = useIsPortrait();
     const s = useScaleFactor();
     const backgroundControls = useResolvedBackgroundControls();

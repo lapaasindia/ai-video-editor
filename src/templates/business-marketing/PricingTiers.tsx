@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Img,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
@@ -53,7 +52,8 @@ export const PricingTiers: React.FC<Props> = ({
     cardBgColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -227,6 +227,7 @@ export const PricingTiers: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'pricing-tiers-01',
     name: 'Pricing Tiers Grid',
     description: 'A responsive pricing grid that auto-adjusts based on the number of plans.',

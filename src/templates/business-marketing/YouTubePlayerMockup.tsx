@@ -40,11 +40,11 @@ export const YouTubePlayerMockup: React.FC<Props> = ({
     thumbnailUrl,
     duration,
     backgroundColor,
-    textColor,
-    darkMode,
+        darkMode,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -207,6 +207,7 @@ export const YouTubePlayerMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'youtube-player-mockup-01',
     name: 'YouTube Player Mockup',
     description: 'A pixel-perfect YouTube video player and description layout.',

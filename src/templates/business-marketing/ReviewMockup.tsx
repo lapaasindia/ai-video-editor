@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Img,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { registerTemplate } from '../registry';
@@ -38,7 +37,8 @@ export const ReviewMockup: React.FC<Props> = ({
     textColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -185,6 +185,7 @@ export const ReviewMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'review-mockup-01',
     name: 'Trustpilot/G2 Review Card',
     description: 'A realistic review card simulating Trustpilot, G2, or Capterra to build instant credibility.',

@@ -40,20 +40,19 @@ export const IMessageMockup: React.FC<Props> = ({
     contactAvatarUrl,
     messages,
     backgroundColor,
-    textColor,
-    bubbleColorMe,
+        bubbleColorMe,
     bubbleColorThem,
     textMe,
     textThem,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
-    const paddingX = isPortrait ? 20 * scale : 120 * scale;
-    const phoneWidth = isPortrait ? width : 450 * scale;
-    const phoneHeight = isPortrait ? height : 850 * scale;
+        const phoneWidth = isPortrait ? width : 450 * scale;
+    const phoneHeight = isPortrait ? 1920 : 850 * scale;
 
     // Pop in animation for the whole phone
     const phonePop = spring({ frame: frame - 10, fps, config: { damping: 14 } });
@@ -224,6 +223,7 @@ export const IMessageMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'imessage-chat-mockup-01',
     name: 'iMessage Chat Mockup',
     description: 'A realistic iOS text message conversation with typing indicators and animated bubbles.',

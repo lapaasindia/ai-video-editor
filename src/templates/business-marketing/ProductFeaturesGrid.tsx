@@ -43,7 +43,8 @@ export const ProductFeaturesGrid: React.FC<Props> = ({
     cardBgColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -178,10 +179,11 @@ export const ProductFeaturesGrid: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'product-features-grid-01',
     name: 'Product Features Grid',
     description: 'A clean, responsive grid highlighting core features with icons and descriptions.',
-    category: 'product-features',
+    category: 'business-marketing',
     durationInFrames: 150,
     fps: 30,
     component: ProductFeaturesGrid,

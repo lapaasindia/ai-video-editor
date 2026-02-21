@@ -8,7 +8,7 @@ import {
     random,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
+import { useIsPortrait, useScaleFactor } from "../../lib/responsive";
 import { fadeIn } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import {

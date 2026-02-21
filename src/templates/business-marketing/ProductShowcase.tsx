@@ -43,6 +43,7 @@ export const ProductShowcase: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -228,6 +229,7 @@ export const ProductShowcase: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'product-showcase-01',
     name: 'Product Feature Showcase',
     description: 'A split-screen product reveal showing a hero image alongside key highlights.',

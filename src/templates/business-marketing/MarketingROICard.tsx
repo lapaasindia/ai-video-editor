@@ -44,6 +44,7 @@ export const MarketingROICard: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -200,10 +201,11 @@ export const MarketingROICard: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'marketing-roi-card-01',
     name: 'Marketing ROI Dashboard',
     description: 'A clean analytics dashboard showing key performance indicators (KPIs) and trends.',
-    category: 'marketing-sales',
+    category: 'business-marketing',
     durationInFrames: 150,
     fps: 30,
     component: MarketingROICard,

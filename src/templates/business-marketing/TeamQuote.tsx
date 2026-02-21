@@ -35,7 +35,8 @@ export const TeamQuote: React.FC<Props> = ({
     accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -137,10 +138,11 @@ export const TeamQuote: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'team-quote-01',
     name: 'Impactful Quote',
     description: 'A bold, cinematic quote layout with a prominent author avatar and role.',
-    category: 'social-proof',
+    category: 'business-marketing',
     durationInFrames: 180,
     fps: 30,
     component: TeamQuote,

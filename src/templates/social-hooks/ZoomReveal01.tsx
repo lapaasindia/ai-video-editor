@@ -40,6 +40,7 @@ type Props = z.infer<typeof zoomRevealSchema>;
 export const ZoomReveal01: React.FC<Props> = (props) => {
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
+    
     const isPortrait = useIsPortrait();
     const s = useScaleFactor();
     const backgroundControls = useResolvedBackgroundControls();

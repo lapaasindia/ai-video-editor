@@ -51,6 +51,7 @@ export const PricingComparisonTable: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -221,10 +222,11 @@ export const PricingComparisonTable: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'pricing-comparison-01',
     name: 'Pricing Comparison Table',
     description: 'A responsive pricing tier graphic. Add as many plans as you need and it will auto-layout.',
-    category: 'marketing-sales',
+    category: 'business-marketing',
     durationInFrames: 210,
     fps: 30,
     component: PricingComparisonTable,

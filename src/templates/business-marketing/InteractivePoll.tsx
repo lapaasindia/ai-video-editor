@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Img,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
@@ -40,7 +39,8 @@ export const InteractivePoll: React.FC<Props> = ({
     barBgColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -169,6 +169,7 @@ export const InteractivePoll: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'interactive-poll-01',
     name: 'Dynamic Poll Results',
     description: 'An animated bar chart showing poll results, great for engagement.',

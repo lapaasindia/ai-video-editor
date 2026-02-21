@@ -41,6 +41,7 @@ export const SplitScreenMetrics: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -147,6 +148,7 @@ export const SplitScreenMetrics: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'split-screen-metrics-01',
     name: 'Split Screen Metric Compare',
     description: 'A bold, split-screen layout comparing a bad metric to a good metric.',

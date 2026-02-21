@@ -71,6 +71,7 @@ export const FinancialBarChart: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -383,6 +384,7 @@ export const FinancialBarChart: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'financial-bar-chart-01',
     name: 'Multi-Series Financial Chart',
     description: 'A robust multi-series bar chart that handles positive and negative values. Great for comparing yearly/quarterly financials.',

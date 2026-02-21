@@ -40,7 +40,8 @@ export const HistoryMilestones: React.FC<Props> = ({
     accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -50,12 +51,7 @@ export const HistoryMilestones: React.FC<Props> = ({
     // Cinematic zoom through logic
     // We allocate 60 frames per milestone
     const framesPerMilestone = 60;
-    const currentMilestoneIndex = Math.min(
-        Math.floor(frame / framesPerMilestone),
-        milestones.length - 1
-    );
-    const progressInMilestone = (frame % framesPerMilestone) / framesPerMilestone;
-    
+            
     // We will render all milestones in 3D Z-space
     // The "camera" moves forward on the Z axis
 
@@ -171,10 +167,11 @@ export const HistoryMilestones: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'history-milestones-01',
     name: '3D History Timeline',
     description: 'A cinematic 3D zoom-through of historical company milestones with background imagery.',
-    category: 'dynamic-timelines',
+    category: 'business-marketing',
     durationInFrames: 300, // Will vary based on number of items in real usage, we assume 5 items * 60 frames = 300
     fps: 30,
     component: HistoryMilestones,

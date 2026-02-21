@@ -61,7 +61,8 @@ export const TestimonialCarousel: React.FC<Props> = ({
     accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -218,10 +219,11 @@ export const TestimonialCarousel: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'testimonial-carousel-01',
     name: 'Dynamic Testimonial Carousel',
     description: 'Automatically divides the video duration evenly among all provided testimonials, animating them in and out.',
-    category: 'social-proof',
+    category: 'business-marketing',
     durationInFrames: 300,
     fps: 30,
     component: TestimonialCarousel,

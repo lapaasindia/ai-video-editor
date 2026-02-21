@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Img,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
@@ -44,6 +43,7 @@ export const HorizontalRoadmap: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -218,10 +218,11 @@ export const HorizontalRoadmap: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'horizontal-roadmap-01',
     name: 'Dynamic Roadmap',
     description: 'A timeline roadmap that connects milestones. Adapts layout based on device orientation.',
-    category: 'dynamic-timelines',
+    category: 'business-marketing',
     durationInFrames: 210,
     fps: 30,
     component: HorizontalRoadmap,

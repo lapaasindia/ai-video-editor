@@ -37,7 +37,8 @@ export const BenefitCheckmarks: React.FC<Props> = ({
     primaryColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -146,10 +147,11 @@ export const BenefitCheckmarks: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'benefit-checkmarks-01',
     name: 'Rapid Fire Checkmarks',
     description: 'A punchy, fast-animating list of checkmarks detailing benefits. Auto-splits into columns if list is long.',
-    category: 'product-features',
+    category: 'business-marketing',
     durationInFrames: 150,
     fps: 30,
     component: BenefitCheckmarks,

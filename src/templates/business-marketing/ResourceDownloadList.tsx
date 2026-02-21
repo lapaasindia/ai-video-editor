@@ -41,7 +41,8 @@ export const ResourceDownloadList: React.FC<Props> = ({
     secondaryColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -238,6 +239,7 @@ export const ResourceDownloadList: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'resource-download-list-01',
     name: 'Resource Download CTA',
     description: 'A 3D book mockup paired with a dynamic list of bullet points detailing what is inside.',

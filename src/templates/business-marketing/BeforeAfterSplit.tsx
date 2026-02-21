@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Img,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
@@ -50,6 +49,7 @@ export const BeforeAfterSplit: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -218,10 +218,11 @@ export const BeforeAfterSplit: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'before-after-split-01',
     name: 'Before & After Slider',
     description: 'A dynamic split-screen slider comparing pain points to solutions.',
-    category: 'product-features',
+    category: 'business-marketing',
     durationInFrames: 180,
     fps: 30,
     component: BeforeAfterSplit,

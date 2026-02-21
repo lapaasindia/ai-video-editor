@@ -40,11 +40,11 @@ export const AppStoreMockup: React.FC<Props> = ({
     description,
     buttonText,
     backgroundColor,
-    textColor,
-    accentColor,
+        accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -53,7 +53,7 @@ export const AppStoreMockup: React.FC<Props> = ({
 
     // Mockup Dimensions
     const cardWidth = isPortrait ? width : 450 * scale;
-    const cardHeight = isPortrait ? height : 800 * scale;
+    const cardHeight = isPortrait ? 1920 : 800 * scale;
 
     const bg = '#000'; // App Store Dark Mode
     const textPrimary = '#fff';
@@ -188,6 +188,7 @@ export const AppStoreMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'app-store-mockup-01',
     name: 'App Store Profile Mockup',
     description: 'A realistic iOS App Store page simulation, great for app marketing videos.',

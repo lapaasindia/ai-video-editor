@@ -224,26 +224,26 @@ const EditorLayout = () => {
     const editMenuItems: MenuItem[] = [
         { label: 'Undo', shortcut: '⌘Z', action: undo, disabled: !canUndo },
         { label: 'Redo', shortcut: '⌘⇧Z', action: redo, disabled: !canRedo },
-        { separator: true },
+        { label: '-', separator: true },
         { label: 'Import Media…', shortcut: '⌘I', action: () => importMedia?.(), disabled: !currentProject },
         { label: 'Save Project', shortcut: '⌘S', action: () => saveProject?.() },
-        { separator: true },
+        { label: '-', separator: true },
         { label: 'Close Project', action: () => closeProject?.(), disabled: !currentProject },
         { label: 'Reset AI Pipeline', action: () => resetPipeline?.(), disabled: !currentProject },
     ];
 
     const viewMenuItems: MenuItem[] = [
         { label: 'Settings', shortcut: '⌘,', action: () => setShowSettings(true) },
-        { separator: true },
+        { label: '-', separator: true },
         { label: 'Output Logs', action: () => setShowLogs(v => !v) },
-        { separator: true },
+        { label: '-', separator: true },
         { label: 'Export XML (FCPXML)', action: () => exportFCPXML?.(), disabled: !currentProject },
         { label: 'Export Video', shortcut: '⌘E', action: () => renderVideo?.(), disabled: !currentProject },
     ];
 
     const helpMenuItems: MenuItem[] = [
         { label: 'About Lapaas AI Editor', action: () => alert('Lapaas AI Editor\nBuilt with Tauri + React + Remotion') },
-        { separator: true },
+        { label: '-', separator: true },
         { label: 'View on GitHub', action: () => window.open('https://github.com/lapaasindia/ai-video-editor', '_blank') },
         { label: 'Report a Bug', action: () => window.open('https://github.com/lapaasindia/ai-video-editor/issues', '_blank') },
     ];

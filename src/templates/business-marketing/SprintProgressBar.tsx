@@ -44,6 +44,7 @@ export const SprintProgressBar: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -201,10 +202,11 @@ export const SprintProgressBar: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'sprint-progress-bar-01',
     name: 'Dynamic Sprint Roadmap',
     description: 'A horizontal progress bar that fills up to indicate completed vs active milestones.',
-    category: 'dynamic-timelines',
+    category: 'business-marketing',
     durationInFrames: 180,
     fps: 30,
     component: SprintProgressBar,

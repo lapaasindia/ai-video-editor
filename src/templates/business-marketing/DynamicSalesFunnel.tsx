@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Sequence,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
@@ -41,6 +40,7 @@ export const DynamicSalesFunnel: React.FC<Props> = ({
 }) => {
     const frame = useCurrentFrame();
     const { fps, width, height } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -167,10 +167,11 @@ export const DynamicSalesFunnel: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'dynamic-sales-funnel-01',
     name: 'Dynamic Sales Funnel',
     description: 'A stacked, inverted pyramid funnel that dynamically adjusts to the number of stages provided.',
-    category: 'marketing-sales',
+    category: 'business-marketing',
     durationInFrames: 150,
     fps: 30,
     component: DynamicSalesFunnel,

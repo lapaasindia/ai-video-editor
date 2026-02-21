@@ -5,8 +5,7 @@ import {
     useVideoConfig,
     interpolate,
     spring,
-    Img,
-} from 'remotion';
+    } from 'remotion';
 import { z } from 'zod';
 import { useIsPortrait, useScaleFactor } from '../../lib/responsive';
 import { EditableText } from '../../components/EditableText';
@@ -43,7 +42,8 @@ export const ContactInfoCard: React.FC<Props> = ({
     accentColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -194,6 +194,7 @@ export const ContactInfoCard: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'contact-info-card-01',
     name: 'Contact Information Card',
     description: 'A polished, modern contact card that sequentially reveals contact methods.',

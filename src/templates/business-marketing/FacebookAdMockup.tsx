@@ -48,7 +48,8 @@ export const FacebookAdMockup: React.FC<Props> = ({
     textColor,
 }) => {
     const frame = useCurrentFrame();
-    const { fps, width, height } = useVideoConfig();
+    const { fps, width } = useVideoConfig();
+    
     const scale = useScaleFactor();
     const isPortrait = useIsPortrait();
 
@@ -204,6 +205,7 @@ export const FacebookAdMockup: React.FC<Props> = ({
 };
 
 registerTemplate({
+    tags: [],
     id: 'facebook-ad-mockup-01',
     name: 'Facebook Ad Mockup',
     description: 'A realistic simulation of a Facebook Feed Ad, perfect for testing ad creative visually.',
