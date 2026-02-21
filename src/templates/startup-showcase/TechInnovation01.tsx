@@ -9,7 +9,7 @@ import {
     Video,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait } from '../../lib/responsive';
+import { useIsPortrait, useScaleFactor } from "../../lib/responsive";
 import { fadeIn } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import { AnimatedGradient } from '../../components/AnimatedGradient';
@@ -37,7 +37,7 @@ export const techInnovationSchema = z.object({
 type Props = z.infer<typeof techInnovationSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const TechInnovation01: React.FC<Props> = (props) => {
+export const TechInnovation01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

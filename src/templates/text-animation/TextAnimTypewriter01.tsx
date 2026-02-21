@@ -5,7 +5,7 @@ import {
     interpolate,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait } from '../../lib/responsive';
+import { useIsPortrait, useScaleFactor } from "../../lib/responsive";
 import { fadeIn, typewriter } from '../../lib/animations';
 import { AnimatedGradient } from '../../components/AnimatedGradient';
 import {
@@ -34,7 +34,7 @@ export const textAnimTypewriterSchema = z.object({
 type Props = z.infer<typeof textAnimTypewriterSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const TextAnimTypewriter01: React.FC<Props> = (props) => {
+export const TextAnimTypewriter01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const isPortrait = useIsPortrait();
     const backgroundControls = useResolvedBackgroundControls();

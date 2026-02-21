@@ -5,7 +5,7 @@ import {
     useVideoConfig,
     interpolate } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive } from '../../lib/responsive';
+import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
 import { fadeIn, slideIn, scaleIn } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import { AnimatedImage } from '../../components/AnimatedImage';
@@ -38,7 +38,7 @@ export const caseStudyCompanyProfileSchema = z.object({
 type Props = z.infer<typeof caseStudyCompanyProfileSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CaseStudyCompanyProfile01: React.FC<Props> = (props) => {
+export const CaseStudyCompanyProfile01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

@@ -7,7 +7,7 @@ import {
     spring,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive } from '../../lib/responsive';
+import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
 import { fadeIn, slideIn, staggerDelay } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import { AnimatedGradient } from '../../components/AnimatedGradient';
@@ -46,7 +46,7 @@ export const caseStudyProcessSchema = z.object({
 type Props = z.infer<typeof caseStudyProcessSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CaseStudyProcess01: React.FC<Props> = (props) => {
+export const CaseStudyProcess01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

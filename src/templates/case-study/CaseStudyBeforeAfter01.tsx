@@ -5,7 +5,7 @@ import {
     interpolate,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive } from '../../lib/responsive';
+import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
 import { fadeIn, slideIn } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import { AnimatedGradient } from '../../components/AnimatedGradient';
@@ -35,7 +35,7 @@ export const caseStudyBeforeAfterSchema = z.object({
 type Props = z.infer<typeof caseStudyBeforeAfterSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
+export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const isPortrait = useIsPortrait();
     const scale = useResponsive(1, 1);

@@ -8,7 +8,7 @@ import {
     random,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive } from '../../lib/responsive';
+import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
 import { fadeIn } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import {
@@ -38,7 +38,7 @@ export const startupVisionSchema = z.object({
 type Props = z.infer<typeof startupVisionSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const StartupVision01: React.FC<Props> = (props) => {
+export const StartupVision01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     useVideoConfig();
     const isPortrait = useIsPortrait();

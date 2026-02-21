@@ -7,7 +7,7 @@ import {
     spring,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait } from '../../lib/responsive';
+import { useIsPortrait, useScaleFactor } from "../../lib/responsive";
 import { fadeIn } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import { AnimatedGradient } from '../../components/AnimatedGradient';
@@ -36,7 +36,7 @@ export const textAnimGradientSchema = z.object({
 type Props = z.infer<typeof textAnimGradientSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const TextAnimGradient01: React.FC<Props> = (props) => {
+export const TextAnimGradient01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

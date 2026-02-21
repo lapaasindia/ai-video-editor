@@ -8,7 +8,7 @@ import {
     Video,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait } from '../../lib/responsive';
+import { useIsPortrait, useScaleFactor } from "../../lib/responsive";
 import { EditableText } from '../../components/EditableText';
 import { AnimatedGradient } from '../../components/AnimatedGradient';
 import {
@@ -35,7 +35,7 @@ export const companyHistorySchema = z.object({
 type Props = z.infer<typeof companyHistorySchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CompanyHistory01: React.FC<Props> = (props) => {
+export const CompanyHistory01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     useVideoConfig();
     const isPortrait = useIsPortrait();

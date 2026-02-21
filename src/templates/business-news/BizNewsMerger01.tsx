@@ -7,7 +7,7 @@ import {
     spring,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive } from '../../lib/responsive';
+import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
 import { fadeIn, slideIn } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import { AnimatedGradient } from '../../components/AnimatedGradient';
@@ -43,7 +43,7 @@ export const bizNewsMergerSchema = z.object({
 type Props = z.infer<typeof bizNewsMergerSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const BizNewsMerger01: React.FC<Props> = (props) => {
+export const BizNewsMerger01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

@@ -6,7 +6,7 @@ import {
     interpolate,
     random } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait } from '../../lib/responsive';
+import { useIsPortrait, useScaleFactor } from "../../lib/responsive";
 import { EditableText } from '../../components/EditableText';
 import { AnimatedImage } from '../../components/AnimatedImage';
 import {
@@ -32,7 +32,7 @@ export const creativeStorySchema = z.object({
 type Props = z.infer<typeof creativeStorySchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const CreativeStory01: React.FC<Props> = (props) => {
+export const CreativeStory01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const rawFrame = useCurrentFrame();
     useVideoConfig();
     const isPortrait = useIsPortrait();

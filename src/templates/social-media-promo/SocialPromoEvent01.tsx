@@ -6,7 +6,7 @@ import {
     interpolate,
     spring } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive } from '../../lib/responsive';
+import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
 import { fadeIn, slideIn } from '../../lib/animations';
 import { EditableText } from '../../components/EditableText';
 import { AnimatedImage } from '../../components/AnimatedImage';
@@ -38,7 +38,7 @@ export const socialPromoEventSchema = z.object({
 type Props = z.infer<typeof socialPromoEventSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const SocialPromoEvent01: React.FC<Props> = (props) => {
+export const SocialPromoEvent01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();

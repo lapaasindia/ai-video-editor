@@ -7,7 +7,7 @@ import {
     spring,
 } from 'remotion';
 import { z } from 'zod';
-import { useIsPortrait, useResponsive } from '../../lib/responsive';
+import { useIsPortrait, useResponsive, useScaleFactor } from "../../lib/responsive";
 
 import { EditableText } from '../../components/EditableText';
 import { AnimatedGradient } from '../../components/AnimatedGradient';
@@ -34,7 +34,7 @@ export const lowerThirdsSchema = z.object({
 type Props = z.infer<typeof lowerThirdsSchema>;
 
 // ─── Component ───────────────────────────────────────────────
-export const LowerThirds01: React.FC<Props> = (props) => {
+export const LowerThirds01: React.FC<Props> = (props) => {\n    const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();
