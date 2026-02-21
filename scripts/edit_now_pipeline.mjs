@@ -1319,7 +1319,7 @@ async function main() {
     const planningStage = await tracker.run('template-planning', async () => {
       let nextTemplatePlacements;
       let nextAssetSuggestions;
-      const isLLM = templatePlannerModel && !templatePlannerModel.startsWith('heuristic');
+      const isLLM = templatePlannerModel !== 'heuristic' && !templatePlannerModel.startsWith('heuristic');
 
       if (isLLM) {
         try {

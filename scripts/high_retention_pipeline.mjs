@@ -321,10 +321,12 @@ async function main() {
     const transcriptPath = path.join(projectDir, 'transcript.json');
     const outputPath = path.join(projectDir, 'high-retention-plan.json');
 
-    // Auto-detect best LLM
-    const autoLLM = await detectBestLLM();
-    const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || autoLLM.provider);
-    const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || autoLLM.model);
+    // Auto-detect best LLM only if not provided by user/frontend
+    const requestedProvider = readArg('--llm-provider');
+    const requestedModel = readArg('--llm-model');
+    const autoLLM = requestedProvider ? null : await detectBestLLM();
+    const llmProvider = requestedProvider || process.env.LAPAAS_LLM_PROVIDER || autoLLM?.provider || 'ollama';
+    const llmModel = requestedModel || process.env.LAPAAS_LLM_MODEL || autoLLM?.model || 'qwen3:1.7b';
     const llmConfig = { provider: llmProvider, model: llmModel };
 
     console.error(`[HR] High-retention pipeline starting (${llmProvider}/${llmModel})`);

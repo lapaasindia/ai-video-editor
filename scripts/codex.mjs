@@ -143,7 +143,7 @@ async function handleNaturalLanguageInput(input) {
         return;
     }
 
-    const config = detectBestLLM();
+    const config = await detectBestLLM();
     console.log(`\n🤖 Codex (using ${config.provider}/${config.model})...\n`);
 
     const prompt = `

@@ -180,7 +180,33 @@ function runCodexWithModel(model, prompt, timeoutMs) {
                 reject(new Error(`Codex CLI error (${model}): ${err.message}\n${stderr}`));
                 return;
             }
-            resolve(stdout.trim());
+            
+            // Codex CLI outputs a preamble and tokens used at the end.
+            // We want just the actual response block.
+            let output = stdout.trim();
+            
+            // Strip out preamble:
+            // --------
+            // workdir: ...
+            // --------
+            // user
+            // <prompt>
+            // codex
+            const codexHeaderIndex = output.indexOf('\ncodex\n');
+            if (codexHeaderIndex !== -1) {
+                output = output.slice(codexHeaderIndex + 7);
+            }
+
+            // Strip out suffix:
+            // tokens used
+            // 1,580
+            // <duplicate final answer>
+            const tokensUsedIndex = output.indexOf('\ntokens used\n');
+            if (tokensUsedIndex !== -1) {
+                output = output.slice(0, tokensUsedIndex);
+            }
+
+            resolve(output.trim());
         });
 
         const timer = setTimeout(() => {
@@ -506,28 +532,28 @@ export async function detectBestLLM() {
         return { provider, model };
     }
 
-    // 1. Codex CLI — uses ChatGPT login, no API key needed
-    if (await isCodexAvailable()) {
-        console.error('[LLM] Using Codex CLI (gpt-5.2 via ChatGPT login)');
-        return { provider: 'codex', model: 'gpt-5.2' };
-    }
-
-    // 2. OpenAI API directly (if key set)
+    // 1. OpenAI API directly (if key set)
     if (process.env.OPENAI_API_KEY) {
         console.error('[LLM] Using OpenAI API (gpt-4o-mini)');
         return { provider: 'openai', model: 'gpt-4o-mini' };
     }
 
-    // 3. Google Gemini
+    // 2. Google Gemini
     if (process.env.GOOGLE_API_KEY) {
         console.error('[LLM] Using Google Gemini (gemini-2.0-flash)');
         return { provider: 'google', model: 'gemini-2.0-flash' };
     }
 
-    // 4. Anthropic Claude
+    // 3. Anthropic Claude
     if (process.env.ANTHROPIC_API_KEY) {
         console.error('[LLM] Using Anthropic Claude (claude-3-5-haiku-20241022)');
         return { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' };
+    }
+
+    // 4. Codex CLI — uses ChatGPT login, no API key needed
+    if (await isCodexAvailable()) {
+        console.error('[LLM] Using Codex CLI (gpt-5.2 via ChatGPT login)');
+        return { provider: 'codex', model: 'gpt-5.2' };
     }
 
     // 5. Ollama local — always available as last resort

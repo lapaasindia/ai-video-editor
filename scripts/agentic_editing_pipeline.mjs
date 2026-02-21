@@ -84,10 +84,12 @@ async function main() {
     const mode = readArg('--mode', 'hybrid');
     const sourceRef = readArg('--source-ref', 'source-video');
     const fetchExternal = readArg('--fetch-external', 'true');
-    // Auto-detect best LLM: Codex CLI → OpenAI → Google → Anthropic → Ollama
-    const autoLLM = await detectBestLLM();
-    const llmProvider = readArg('--llm-provider', process.env.LAPAAS_LLM_PROVIDER || autoLLM.provider);
-    const llmModel = readArg('--llm-model', process.env.LAPAAS_LLM_MODEL || autoLLM.model);
+    // Auto-detect best LLM only if not provided by user/frontend
+    const requestedProvider = readArg('--llm-provider');
+    const requestedModel = readArg('--llm-model');
+    const autoLLM = requestedProvider ? null : await detectBestLLM();
+    const llmProvider = requestedProvider || process.env.LAPAAS_LLM_PROVIDER || autoLLM?.provider || 'ollama';
+    const llmModel = requestedModel || process.env.LAPAAS_LLM_MODEL || autoLLM?.model || 'qwen3:1.7b';
 
     if (!projectId || !input) {
         throw new Error('Missing required args: --project-id and --input');
