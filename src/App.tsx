@@ -173,6 +173,7 @@ import './templates/business-marketing/DynamicBarChart';
 import './templates/business-marketing/MultiLinkOutro';
 import './templates/business-marketing/ResourceDownloadList';
 import './templates/business-marketing/TeamRosterGrid';
+import './templates/business-marketing/ProductFeaturesGrid';
 
 const EditorLayout = () => {
     const {
