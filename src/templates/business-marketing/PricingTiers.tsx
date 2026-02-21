@@ -69,8 +69,9 @@ export const PricingTiers: React.FC<Props> = ({
     const availableWidth = width - (paddingX * 2);
     
     // Dynamic vertical positioning based on number of rows to prevent overflow
-    const verticalOffset = rows > 1 ? -50 : -40;
-    const topPos = rows > 1 ? '55%' : '50%';
+    // When there are more rows, we need to move the grid higher UP the screen (smaller topPos)
+    const verticalOffset = -50;
+    const topPos = rows > 1 ? '48%' : '50%';
 
     return (
         <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
