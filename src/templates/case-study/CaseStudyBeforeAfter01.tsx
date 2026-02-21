@@ -39,7 +39,6 @@ export const CaseStudyBeforeAfter01: React.FC<Props> = (props) => {
     const scale = useScaleFactor();
     const frame = useCurrentFrame();
     const isPortrait = useIsPortrait();
-    const scale = useResponsive(1, 1);
     const backgroundControls = useResolvedBackgroundControls();
 
     const beforeItems = props.beforeItems.split('\n').filter(Boolean);

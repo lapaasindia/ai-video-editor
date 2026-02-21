@@ -54,7 +54,6 @@ export const DataVizBarChart01: React.FC<Props> = (props) => {
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const isPortrait = useIsPortrait();
-    const scale = useResponsive(1, 1);
     const backgroundControls = useResolvedBackgroundControls();
     const renderBackgroundLayers = shouldRenderBackgroundLayer(backgroundControls);
 
