@@ -63,16 +63,21 @@ export const PricingTiers: React.FC<Props> = ({
     // Grid layout
     const totalTiers = tiers.length;
     const cols = isPortrait ? 1 : Math.min(3, totalTiers);
+    const rows = Math.ceil(totalTiers / cols);
     const paddingX = isPortrait ? 40 * scale : 120 * scale;
     const gap = isPortrait ? 20 * scale : 40 * scale;
     const availableWidth = width - (paddingX * 2);
+    
+    // Dynamic vertical positioning based on number of rows to prevent overflow
+    const verticalOffset = rows > 1 ? -50 : -40;
+    const topPos = rows > 1 ? '55%' : '50%';
 
     return (
         <AbsoluteFill style={{ backgroundColor, fontFamily: interFont, color: textColor }}>
             {/* Header */}
             <div style={{
                 position: 'absolute',
-                top: isPortrait ? 100 * scale : 80 * scale,
+                top: isPortrait ? 80 * scale : 60 * scale,
                 left: 0,
                 width: '100%',
                 textAlign: 'center',
@@ -103,9 +108,9 @@ export const PricingTiers: React.FC<Props> = ({
             {/* Grid */}
             <div style={{
                 position: 'absolute',
-                top: '50%',
+                top: topPos,
                 left: '50%',
-                transform: 'translate(-50%, -40%)',
+                transform: `translate(-50%, ${verticalOffset}%)`,
                 display: 'grid',
                 gridTemplateColumns: `repeat(${cols}, 1fr)`,
                 gap: gap,
