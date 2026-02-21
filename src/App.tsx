@@ -184,6 +184,9 @@ import './templates/business-marketing/ContactInfoCard';
 import './templates/business-marketing/InteractivePoll';
 import './templates/business-marketing/BeforeAfterSplit';
 import './templates/business-marketing/HorizontalRoadmap';
+import './templates/business-marketing/ProductShowcase';
+import './templates/business-marketing/TeamQuote';
+import './templates/business-marketing/SplitScreenMetrics';
 
 const EditorLayout = () => {
     const {
