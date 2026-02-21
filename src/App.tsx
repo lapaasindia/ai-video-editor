@@ -199,6 +199,7 @@ import './templates/business-marketing/AppStoreMockup';
 import './templates/business-marketing/ReviewMockup';
 import './templates/business-marketing/YouTubePlayerMockup';
 import './templates/business-marketing/RedditThreadMockup';
+import './templates/business-marketing/FinancialBarChart';
 
 const EditorLayout = () => {
     const {
