@@ -426,7 +426,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PATCH',
-        'Access-Control-Allow-Headers': 'Content-Type, x-filename',
+        'Access-Control-Allow-Headers': 'Content-Type, x-filename, x-project-id',
         'Access-Control-Max-Age': '86400',
       });
       res.end();
@@ -612,6 +612,27 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ── Helper: pre-trim video with ffmpeg ──────────────────────────────────
+    async function maybeTrimInput(input, pDir, trimStartSec, trimDurationSec) {
+      if (!trimStartSec && !trimDurationSec) return input;
+      // If trimStartSec is 0 and trimDurationSec matches full file, skip trim
+      if (trimStartSec === 0 && !trimDurationSec) return input;
+
+      const trimmedDir = path.join(pDir, 'trimmed');
+      await fs.mkdir(trimmedDir, { recursive: true });
+      const ext = path.extname(input) || '.mp4';
+      const trimmedPath = path.join(trimmedDir, `trimmed_${Date.now()}${ext}`);
+
+      const args = ['-y', '-ss', String(trimStartSec)];
+      if (trimDurationSec > 0) args.push('-t', String(trimDurationSec));
+      args.push('-i', input, '-c', 'copy', '-avoid_negative_ts', 'make_zero', trimmedPath);
+
+      console.log(`[TRIM] ffmpeg ${args.join(' ')}`);
+      await execFile('ffmpeg', args, { timeout: 120_000 });
+      console.log(`[TRIM] Created trimmed file: ${trimmedPath}`);
+      return trimmedPath;
+    }
+
     // ── Pipeline: Standalone Transcription ─────────────────────────────────
     if (method === 'POST' && route === '/pipeline/transcribe') {
       const body = await readBody(req);
@@ -622,6 +643,8 @@ const server = http.createServer(async (req, res) => {
       const sourceRef = typeof body.sourceRef === 'string' ? body.sourceRef : 'source-video';
       const fallbackPolicy = typeof body.fallbackPolicy === 'string' ? body.fallbackPolicy.trim() : '';
       const transcriptionModel = typeof body.transcriptionModel === 'string' ? body.transcriptionModel.trim() : '';
+      const trimStartSec = Number(body.trimStartSec || 0);
+      const trimDurationSec = Number(body.trimDurationSec || 0);
 
       if (!projectId || !input) {
         sendJson(res, 400, { error: 'Missing required fields: projectId, input.' });
@@ -629,7 +652,10 @@ const server = http.createServer(async (req, res) => {
       }
 
       const pDir = await projectDir(projectId);
-      const args = ['--project-id', projectId, '--project-dir', pDir, '--input', input, '--mode', mode, '--language', language, '--source-ref', sourceRef];
+      const effectiveInput = (trimStartSec > 0 || trimDurationSec > 0)
+        ? await maybeTrimInput(input, pDir, trimStartSec, trimDurationSec)
+        : input;
+      const args = ['--project-id', projectId, '--project-dir', pDir, '--input', effectiveInput, '--mode', mode, '--language', language, '--source-ref', sourceRef];
       if (fallbackPolicy) args.push('--fallback-policy', fallbackPolicy);
       if (transcriptionModel) args.push('--transcription-model', transcriptionModel);
 
@@ -655,6 +681,8 @@ const server = http.createServer(async (req, res) => {
       const mode = typeof body.mode === 'string' ? body.mode : 'heuristic';
       const llmProvider = typeof body.llmProvider === 'string' ? body.llmProvider.trim() : '';
       const llmModel = typeof body.llmModel === 'string' ? body.llmModel.trim() : '';
+      const trimStartSec = Number(body.trimStartSec || 0);
+      const trimDurationSec = Number(body.trimDurationSec || 0);
 
       if (!projectId || !input) {
         sendJson(res, 400, { error: 'Missing required fields: projectId, input.' });
@@ -662,7 +690,10 @@ const server = http.createServer(async (req, res) => {
       }
 
       const pDir = await projectDir(projectId);
-      const args = ['--project-id', projectId, '--project-dir', pDir, '--input', input, '--source-ref', sourceRef, '--mode', mode];
+      const effectiveInput = (trimStartSec > 0 || trimDurationSec > 0)
+        ? await maybeTrimInput(input, pDir, trimStartSec, trimDurationSec)
+        : input;
+      const args = ['--project-id', projectId, '--project-dir', pDir, '--input', effectiveInput, '--source-ref', sourceRef, '--mode', mode];
       if (llmProvider) args.push('--llm-provider', llmProvider);
       if (llmModel) args.push('--llm-model', llmModel);
 
@@ -905,6 +936,8 @@ const server = http.createServer(async (req, res) => {
       const fetchExternal = body.fetchExternal === false ? 'false' : 'true';
       const llmProvider = typeof body.llmProvider === 'string' ? body.llmProvider.trim() : '';
       const llmModel = typeof body.llmModel === 'string' ? body.llmModel.trim() : '';
+      const trimStartSec = Number(body.trimStartSec || 0);
+      const trimDurationSec = Number(body.trimDurationSec || 0);
 
       if (!projectId || !input) {
         sendJson(res, 400, { error: 'Missing required fields: projectId, input.' });
@@ -914,10 +947,13 @@ const server = http.createServer(async (req, res) => {
       await updateProjectStatus(projectId, 'AGENTIC_EDIT_IN_PROGRESS');
       try {
         const pDir = await projectDir(projectId);
+        const effectiveInput = (trimStartSec > 0 || trimDurationSec > 0)
+          ? await maybeTrimInput(input, pDir, trimStartSec, trimDurationSec)
+          : input;
         const raw = await runNodeScript(agenticEditScript, [
           '--project-id', projectId,
           '--project-dir', pDir,
-          '--input', input,
+          '--input', effectiveInput,
           '--language', language,
           '--fps', String(fps),
           '--mode', mode,
@@ -960,7 +996,8 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { error: 'Invalid file name' });
         return;
       }
-      const filePath = path.join(rootDir, 'desktop', 'data', projectId, fileName);
+      const pDir = await projectDir(projectId);
+      const filePath = path.join(pDir, fileName);
 
       if (method === 'GET') {
         try {
@@ -1069,6 +1106,128 @@ const server = http.createServer(async (req, res) => {
 
     // ── Load saved API keys into process.env on startup ──────────────────
     // (This is a lazy-load pattern; keys are set when /ai/config POST or GET is first called)
+
+    // ── Custom Pipeline Prompts ──────────────────────────────────────────
+    const customPromptsPath = path.join(rootDir, 'desktop', 'data', 'custom_prompts.json');
+
+    if (method === 'GET' && route === '/ai/prompts') {
+      try {
+        const raw = await fs.readFile(customPromptsPath, 'utf8');
+        sendJson(res, 200, JSON.parse(raw));
+      } catch {
+        sendJson(res, 200, { prompts: {} });
+      }
+      return;
+    }
+
+    if (method === 'POST' && route === '/ai/prompts') {
+      const body = await readBody(req);
+      try {
+        await fs.mkdir(path.dirname(customPromptsPath), { recursive: true });
+        await fs.writeFile(customPromptsPath, JSON.stringify({ prompts: body.prompts || {} }, null, 2), 'utf8');
+        sendJson(res, 200, { ok: true });
+      } catch (e) {
+        sendJson(res, 500, { error: 'Failed to save prompts: ' + e.message });
+      }
+      return;
+    }
+
+    // ── Template Management ─────────────────────────────────────────────
+    const templatesRoot = path.join(rootDir, 'src', 'templates');
+
+    if (method === 'GET' && route === '/templates/list') {
+      try {
+        const categories = await fs.readdir(templatesRoot);
+        const templates = [];
+        for (const cat of categories) {
+          const catPath = path.join(templatesRoot, cat);
+          const stat = await fs.stat(catPath).catch(() => null);
+          if (!stat || !stat.isDirectory()) continue;
+          const files = await fs.readdir(catPath);
+          for (const file of files) {
+            if (!file.endsWith('.tsx')) continue;
+            const filePath = path.join(catPath, file);
+            try {
+              const source = await fs.readFile(filePath, 'utf8');
+              const idMatch = source.match(/id:\s*['"]([^'"]+)['"]/);
+              const nameMatch = source.match(/name:\s*['"]([^'"]+)['"]/);
+              if (idMatch) {
+                templates.push({
+                  id: idMatch[1],
+                  name: nameMatch?.[1] || idMatch[1],
+                  category: cat,
+                  file: file,
+                  path: filePath,
+                  isCustom: cat === 'custom',
+                });
+              }
+            } catch { /* skip unreadable */ }
+          }
+        }
+        sendJson(res, 200, { templates, count: templates.length });
+      } catch (e) {
+        sendJson(res, 500, { error: 'Failed to scan templates: ' + e.message });
+      }
+      return;
+    }
+
+    if (method === 'POST' && route === '/templates/upload') {
+      try {
+        const body = await readBody(req);
+        const { fileName, content, category } = body;
+        if (!fileName || !content) {
+          sendJson(res, 400, { error: 'Missing fileName or content' });
+          return;
+        }
+        const safeName = fileName.replace(/[^a-zA-Z0-9_\-.]/g, '');
+        const targetCat = (category || 'custom').replace(/[^a-zA-Z0-9_\-]/g, '');
+        const targetDir = path.join(templatesRoot, targetCat);
+        await fs.mkdir(targetDir, { recursive: true });
+        const targetPath = path.join(targetDir, safeName.endsWith('.tsx') ? safeName : safeName + '.tsx');
+        await fs.writeFile(targetPath, content, 'utf8');
+
+        // Extract the template ID from the file content
+        const idMatch = content.match(/id:\s*['"]([^'"]+)['"]/);
+        const nameMatch = content.match(/name:\s*['"]([^'"]+)['"]/);
+
+        sendJson(res, 200, {
+          ok: true,
+          path: targetPath,
+          templateId: idMatch?.[1] || safeName.replace('.tsx', ''),
+          templateName: nameMatch?.[1] || safeName,
+          category: targetCat,
+          message: 'Template uploaded. Restart the app or re-run the AI pipeline for it to be available.',
+        });
+      } catch (e) {
+        sendJson(res, 500, { error: 'Failed to upload template: ' + e.message });
+      }
+      return;
+    }
+
+    if (method === 'DELETE' && route.startsWith('/templates/')) {
+      const templateId = route.split('/templates/')[1];
+      if (!templateId) { sendJson(res, 400, { error: 'Missing template ID' }); return; }
+      try {
+        // Search for the file with this ID in the custom category only
+        const customDir = path.join(templatesRoot, 'custom');
+        const files = await fs.readdir(customDir).catch(() => []);
+        let deleted = false;
+        for (const file of files) {
+          if (!file.endsWith('.tsx')) continue;
+          const source = await fs.readFile(path.join(customDir, file), 'utf8');
+          const idMatch = source.match(/id:\s*['"]([^'"]+)['"]/);
+          if (idMatch?.[1] === templateId) {
+            await fs.unlink(path.join(customDir, file));
+            deleted = true;
+            break;
+          }
+        }
+        sendJson(res, 200, { ok: true, deleted });
+      } catch (e) {
+        sendJson(res, 500, { error: 'Failed to delete template: ' + e.message });
+      }
+      return;
+    }
 
     // ── Ollama: List installed models ────────────────────────────────────
     if (method === 'GET' && route === '/ai/ollama/models') {
@@ -1381,11 +1540,20 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // Security: only serve files under the project data/uploads directory
-      const resolved = path.resolve(filePath);
-      const allowedDirs = [
+      // Security: only serve files under known data directories
+      // Use realpath to resolve symlinks (e.g. macOS /tmp -> /private/tmp)
+      let resolved;
+      try {
+        resolved = await fs.realpath(path.resolve(filePath));
+      } catch {
+        resolved = path.resolve(filePath);
+      }
+      const allowedDirs = await Promise.all([
         path.resolve(rootDir, 'desktop', 'data'),
-      ];
+        fs.realpath(os.tmpdir()).catch(() => os.tmpdir()),
+        fs.realpath('/tmp').catch(() => '/tmp'),
+        os.homedir(),
+      ]);
       const isAllowed = allowedDirs.some(dir => resolved.startsWith(dir));
       if (!isAllowed) {
         sendJson(res, 403, { error: 'Access denied.' });

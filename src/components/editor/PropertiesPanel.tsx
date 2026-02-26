@@ -55,6 +55,37 @@ const ProgressBar: React.FC<{ percent: number; stage: string }> = ({ percent, st
     </div>
 );
 
+const STAGE_ICONS: Record<string, string> = {
+    done: '✔',
+    skipped: '⏭',
+    running: '⏳',
+    pending: '○',
+    error: '✗',
+};
+
+const STAGE_COLORS: Record<string, string> = {
+    done: '#10b981',
+    skipped: '#f59e0b',
+    running: '#818cf8',
+    pending: 'var(--text-muted)',
+    error: '#ef4444',
+};
+
+const ALL_STEPS = [
+    { key: 'transcription', label: 'Transcription' },
+    { key: 'transcript_annotation', label: 'Transcript Annotation' },
+    { key: 'semantic_chunking', label: 'Semantic Chunking' },
+    { key: 'high_retention_analysis', label: 'High-Retention Analysis' },
+    { key: 'chunk_qc', label: 'Chunk Quality Control' },
+    { key: 'asset_quality', label: 'Asset Quality Gate' },
+    { key: 'cut_safety_review', label: 'Cut Safety Review' },
+    { key: 'seam_quality', label: 'Seam Quality Analysis' },
+    { key: 'cross_chunk_review', label: 'Cross-Chunk Consistency' },
+    { key: 'global_analysis', label: 'Global Video Intelligence' },
+    { key: 'pre_render_qa', label: 'Pre-Render QA' },
+    { key: 'timeline_assembly', label: 'Timeline Assembly' },
+];
+
 const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ label, stageIcon = '⏳' }) => {
     const { pipelineProgress, agenticProgress, overlayChunkIndex, totalOverlayChunks, pipelineStage } = useEditor();
     const [elapsed, setElapsed] = React.useState(0);
@@ -76,6 +107,32 @@ const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ labe
     const percent = agenticProgress?.percent ?? pipelineProgress?.percent ?? 0;
     const message = agenticProgress?.detail || agenticProgress?.currentStep || pipelineProgress?.message || label;
     const isOverlay = pipelineStage === 'overlaying_chunk';
+
+    // Build stage status map from stageLog
+    const stageLog = agenticProgress?.stageLog || [];
+    const stageStatusMap: Record<string, { status: string; detail: string; subStages: Array<{ subStage: string; status: string; detail: string; timestamp: string }> }> = {};
+    for (const entry of stageLog) {
+        if (!stageStatusMap[entry.step]) {
+            stageStatusMap[entry.step] = { status: entry.status, detail: entry.detail, subStages: [] };
+        } else {
+            stageStatusMap[entry.step].status = entry.status;
+            stageStatusMap[entry.step].detail = entry.detail;
+        }
+        if (entry.subStage) {
+            const existing = stageStatusMap[entry.step].subStages.find(s => s.subStage === entry.subStage);
+            if (existing) {
+                existing.status = entry.status;
+                existing.detail = entry.detail;
+            } else {
+                stageStatusMap[entry.step].subStages.push({
+                    subStage: entry.subStage,
+                    status: entry.status,
+                    detail: entry.detail,
+                    timestamp: entry.timestamp,
+                });
+            }
+        }
+    }
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 0' }}>
@@ -119,35 +176,126 @@ const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ labe
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
                 <span>{Math.round(percent)}%</span>
                 {agenticProgress && agenticProgress.currentStep && (
-                    <span style={{ textTransform: 'capitalize' }}>{agenticProgress.currentStep.replace(/_/g, ' ')}</span>
+                    <span style={{ textTransform: 'capitalize' }}>
+                        {agenticProgress.currentStep.replace(/_/g, ' ')}
+                        {agenticProgress.subStage ? ` → ${agenticProgress.subStage.replace(/_/g, ' ')}` : ''}
+                    </span>
                 )}
                 {!agenticProgress && isOverlay && totalOverlayChunks > 0 && (
                     <span>Chunk {overlayChunkIndex + 1} / {totalOverlayChunks}</span>
                 )}
             </div>
 
-            {/* Helpful tip */}
-            <div style={{
-                fontSize: 10,
-                color: 'var(--text-muted)',
-                textAlign: 'center',
-                opacity: 0.7,
-                lineHeight: 1.4,
-            }}>
-                {agenticProgress
-                    ? 'AI is analyzing your video and generating edits…'
-                    : isOverlay
-                        ? 'AI is analyzing each transcript section and selecting relevant assets…'
-                        : 'This may take a few minutes depending on video length.'}
-            </div>
+            {/* Stage Log — Pipeline Steps */}
+            {stageLog.length > 0 && (
+                <div style={{
+                    marginTop: 4,
+                    background: 'var(--bg-secondary, #1a1a2e)',
+                    borderRadius: 6,
+                    padding: '8px 10px',
+                    maxHeight: 260,
+                    overflowY: 'auto',
+                    border: '1px solid var(--panel-border, #2a2a3e)',
+                }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Pipeline Stages
+                    </div>
+                    {ALL_STEPS.map((stepDef, idx) => {
+                        const info = stageStatusMap[stepDef.key];
+                        const status = info?.status || 'pending';
+                        const icon = STAGE_ICONS[status] || '○';
+                        const color = STAGE_COLORS[status] || 'var(--text-muted)';
+                        const isActive = agenticProgress?.currentStep === stepDef.key && status === 'running';
+                        return (
+                            <div key={stepDef.key} style={{ marginBottom: 2 }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: 6,
+                                    padding: '3px 0',
+                                    opacity: status === 'pending' ? 0.4 : 1,
+                                }}>
+                                    <span style={{ fontSize: 11, color, flexShrink: 0, width: 14, textAlign: 'center' }}>
+                                        {isActive ? (
+                                            <span className="spinner-small" style={{ display: 'inline-block', width: 10, height: 10, borderWidth: 1.5 }} />
+                                        ) : icon}
+                                    </span>
+                                    <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, width: 16 }}>{idx + 1}.</span>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <span style={{ fontSize: 11, fontWeight: isActive ? 600 : 400, color: isActive ? 'var(--text-primary)' : color }}>
+                                            {stepDef.label}
+                                        </span>
+                                        {info?.detail && status !== 'pending' && (
+                                            <div style={{
+                                                fontSize: 9,
+                                                color: 'var(--text-muted)',
+                                                marginTop: 1,
+                                                lineHeight: 1.3,
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                            }}>
+                                                {info.detail}
+                                            </div>
+                                        )}
+                                        {/* Sub-stages */}
+                                        {info?.subStages && info.subStages.length > 0 && (
+                                            <div style={{ marginTop: 2, paddingLeft: 10, borderLeft: '1px solid var(--panel-border, #2a2a3e)' }}>
+                                                {info.subStages.map((sub, si) => {
+                                                    const subIcon = STAGE_ICONS[sub.status] || '○';
+                                                    const subColor = STAGE_COLORS[sub.status] || 'var(--text-muted)';
+                                                    const isSubActive = sub.status === 'running';
+                                                    return (
+                                                        <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '1px 0' }}>
+                                                            <span style={{ fontSize: 9, color: subColor, width: 12, textAlign: 'center', flexShrink: 0 }}>
+                                                                {isSubActive ? (
+                                                                    <span className="spinner-small" style={{ display: 'inline-block', width: 8, height: 8, borderWidth: 1 }} />
+                                                                ) : subIcon}
+                                                            </span>
+                                                            <span style={{ fontSize: 9, color: isSubActive ? 'var(--text-primary)' : subColor }}>
+                                                                {sub.subStage.replace(/_/g, ' ')}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Helpful tip (when no stage log yet) */}
+            {stageLog.length === 0 && (
+                <div style={{
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                    textAlign: 'center',
+                    opacity: 0.7,
+                    lineHeight: 1.4,
+                }}>
+                    {agenticProgress
+                        ? 'AI is analyzing your video and generating edits…'
+                        : isOverlay
+                            ? 'AI is analyzing each transcript section and selecting relevant assets…'
+                            : 'This may take a few minutes depending on video length.'}
+                </div>
+            )}
         </div>
     );
 };
 
 const StageIdle: React.FC = () => {
-    const { media, agenticEdit, currentProject } = useEditor();
+    const { media, agenticEdit, currentProject, tracks } = useEditor();
     const videoItem = media.find(m => m.status === 'ok' && m.type.toLowerCase() === 'video');
     const canStart = !!currentProject && !!videoItem;
+
+    // Use trimmed clip duration from timeline if available, otherwise fall back to original
+    const videoClip = videoItem ? tracks.flatMap(t => t.clips).find(c => c.mediaId === videoItem.id && c.type === 'video') : null;
+    const displayDuration = videoClip?.duration || videoItem?.duration || 0;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -156,9 +304,9 @@ const StageIdle: React.FC = () => {
                 {videoItem ? (
                     <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500, wordBreak: 'break-all' }}>
                         {videoItem.name}
-                        {videoItem.duration && (
+                        {displayDuration > 0 && (
                             <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>
-                                ({formatDuration(videoItem.duration * 1_000_000)})
+                                ({formatDuration(displayDuration * 1_000_000)})
                             </span>
                         )}
                     </div>

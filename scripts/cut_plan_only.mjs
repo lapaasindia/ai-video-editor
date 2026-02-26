@@ -193,10 +193,13 @@ function buildHeuristicCutPlan(durationUs, transcriptPayload, { silenceRanges = 
 // ── LLM Cut Planning ────────────────────────────────────────────────────────
 
 import { runLLMPrompt, extractJsonFromLLMOutput } from './lib/llm_provider.mjs';
+import { getCustomPrompt } from './lib/custom_prompts.mjs';
 
 async function generateCutPlanWithLLM(transcriptPayload, llmConfig) {
     const simplified = (transcriptPayload.segments || []).map(s => ({ startUs: s.startUs, endUs: s.endUs, text: s.text }));
-    const prompt = `You are an expert video editor AI. Analyze this transcript deeply.
+    const customSystemPrompt = await getCustomPrompt('cut_plan');
+    const systemInstruction = customSystemPrompt || 'You are an expert video editor AI. Analyze this transcript deeply.';
+    const prompt = `${systemInstruction}
 
 Transcript segments:
 ${JSON.stringify(simplified, null, 1)}

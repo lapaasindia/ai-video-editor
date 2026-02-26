@@ -58,8 +58,57 @@ const FALLBACK_PROVIDERS: Provider[] = [
     },
 ];
 
+// ── Pipeline Stage Definitions for Prompt Editor ─────────────────────────────
+
+interface PipelineStage {
+    key: string;
+    label: string;
+    description: string;
+    defaultPrompt: string;
+}
+
+const PIPELINE_STAGES: PipelineStage[] = [
+    {
+        key: 'high_retention_analysis',
+        label: 'High-Retention Chunk Analysis',
+        description: 'System prompt for per-chunk AI analysis — decides templates, B-roll, and cuts.',
+        defaultPrompt: 'You are an expert video editor creating HIGH-RETENTION content for Indian YouTube audiences.',
+    },
+    {
+        key: 'cut_plan',
+        label: 'Cut Planning',
+        description: 'System prompt for identifying sections to cut — filler, silence, repetitions.',
+        defaultPrompt: 'You are an expert video editor AI. Analyze this transcript deeply.',
+    },
+    {
+        key: 'overlay_plan',
+        label: 'Overlay Planning',
+        description: 'System prompt for suggesting overlay templates for transcript chunks.',
+        defaultPrompt: 'You are an expert video editor AI. Analyze this transcript chunk and suggest overlay templates.',
+    },
+    {
+        key: 'template_plan',
+        label: 'Template Selection',
+        description: 'System prompt for picking the best templates for key moments.',
+        defaultPrompt: 'You are an expert video editor AI specializing in Hindi/Hinglish content. Analyze this transcript and pick the BEST templates for key moments.',
+    },
+    {
+        key: 'start_editing',
+        label: 'Start Editing Analysis',
+        description: 'System prompt for initial transcript analysis — cuts, sections, overlay suggestions.',
+        defaultPrompt: 'You are an expert video editor AI. Analyze this Hindi/Hinglish transcript.',
+    },
+    {
+        key: 'chunk_replan',
+        label: 'Chunk Re-Plan (QC)',
+        description: 'System prompt for re-planning chunks that failed quality checks.',
+        defaultPrompt: 'You are an expert video editor creating HIGH-RETENTION content. A previous edit plan for this chunk failed quality checks. Re-plan with the improvements below.',
+    },
+];
+
 export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ onClose }) => {
     const { currentProject, updateProject } = useEditor();
+    const [activeTab, setActiveTab] = useState<'general' | 'prompts' | 'templates'>('general');
     const [name, setName] = useState(currentProject?.name || '');
     const [resolution, setResolution] = useState(currentProject?.resolution || '1080p');
     const [fps, setFps] = useState(currentProject?.fps || 30);
@@ -70,6 +119,11 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ onCl
     const [customModel, setCustomModel] = useState('');
     const [loading, setLoading] = useState(false);
     const [providers, setProviders] = useState<Provider[]>(FALLBACK_PROVIDERS);
+    const [customPrompts, setCustomPrompts] = useState<Record<string, string>>({});
+    const [promptsLoading, setPromptsLoading] = useState(false);
+    const [promptsSaved, setPromptsSaved] = useState(false);
+    const [expandedStage, setExpandedStage] = useState<string | null>(null);
+    const [templateList, setTemplateList] = useState<Array<{ id: string; name: string; category: string; file: string; isCustom: boolean }>>([]);
 
     // Fetch provider catalog from backend
     useEffect(() => {
@@ -82,6 +136,56 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ onCl
             })
             .catch(() => { /* use fallback */ });
     }, []);
+
+    // Fetch template list when templates tab is active
+    const fetchTemplates = () => {
+        fetch(`${BACKEND}/templates/list`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.templates) setTemplateList(data.templates);
+            })
+            .catch(() => { /* ignore */ });
+    };
+
+    useEffect(() => {
+        if (activeTab === 'templates') fetchTemplates();
+    }, [activeTab]);
+
+
+    // Fetch custom prompts
+    useEffect(() => {
+        fetch(`${BACKEND}/ai/prompts`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.prompts) setCustomPrompts(data.prompts);
+            })
+            .catch(() => { /* use defaults */ });
+    }, []);
+
+    const handleSavePrompts = async () => {
+        setPromptsLoading(true);
+        try {
+            await fetch(`${BACKEND}/ai/prompts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompts: customPrompts }),
+            });
+            setPromptsSaved(true);
+            setTimeout(() => setPromptsSaved(false), 2000);
+        } catch {
+            alert('Failed to save prompts');
+        } finally {
+            setPromptsLoading(false);
+        }
+    };
+
+    const handleResetPrompt = (key: string) => {
+        setCustomPrompts(prev => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+    };
 
     // Set default model when provider changes
     useEffect(() => {
@@ -139,14 +243,33 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ onCl
         color: 'var(--text-secondary)',
     };
 
+    const tabStyle = (active: boolean) => ({
+        padding: '8px 16px',
+        borderRadius: '6px 6px 0 0',
+        border: 'none',
+        background: active ? 'var(--bg-secondary)' : 'transparent',
+        color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+        fontWeight: active ? 600 : 400,
+        fontSize: 13,
+        cursor: 'pointer' as const,
+        transition: 'all 0.2s',
+        borderBottom: active ? '2px solid #6366f1' : '2px solid transparent',
+    });
+
     return (
         <div className="modal-overlay">
-            <div className="modal-content wizard-modal" style={{ width: '560px', maxHeight: '90vh', overflowY: 'auto' as const }}>
-                <div className="wizard-header">
+            <div className="modal-content wizard-modal" style={{ width: '640px', maxHeight: '90vh', overflowY: 'auto' as const }}>
+                <div className="wizard-header" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
                     <h2>Project Settings</h2>
+                    <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                        <button style={tabStyle(activeTab === 'general')} onClick={() => setActiveTab('general')}>General</button>
+                        <button style={tabStyle(activeTab === 'prompts')} onClick={() => setActiveTab('prompts')}>AI Prompts</button>
+                        <button style={tabStyle(activeTab === 'templates')} onClick={() => setActiveTab('templates')}>Templates</button>
+                    </div>
                 </div>
 
                 <div className="wizard-body">
+                    {activeTab === 'general' && <>
                     {/* Basic Settings */}
                     <div className="form-group" style={{ marginBottom: 16 }}>
                         <label style={labelStyle}>Project Name</label>
@@ -313,13 +436,177 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ onCl
                             </div>
                         )}
                     </div>
+                    </>}
+
+                    {activeTab === 'prompts' && (
+                        <div>
+                            <div style={{
+                                padding: '10px 14px',
+                                background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))',
+                                borderRadius: 8,
+                                border: '1px solid rgba(99,102,241,0.15)',
+                                marginBottom: 16,
+                                fontSize: 12,
+                                color: 'var(--text-secondary)',
+                                lineHeight: 1.5,
+                            }}>
+                                Customize the system prompts sent to the AI at each pipeline stage.
+                                Leave empty to use the default prompt. Changes apply to the next AI edit run.
+                            </div>
+
+                            {PIPELINE_STAGES.map(stage => {
+                                const isExpanded = expandedStage === stage.key;
+                                const hasCustom = !!(customPrompts[stage.key] && customPrompts[stage.key].trim());
+                                return (
+                                    <div key={stage.key} style={{
+                                        marginBottom: 8,
+                                        border: '1px solid var(--panel-border)',
+                                        borderRadius: 8,
+                                        overflow: 'hidden',
+                                        background: hasCustom ? 'rgba(99,102,241,0.04)' : 'var(--bg-secondary)',
+                                    }}>
+                                        <button
+                                            onClick={() => setExpandedStage(isExpanded ? null : stage.key)}
+                                            style={{
+                                                width: '100%',
+                                                padding: '10px 14px',
+                                                background: 'none',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: 8,
+                                            }}
+                                        >
+                                            <div style={{ textAlign: 'left' }}>
+                                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    {stage.label}
+                                                    {hasCustom && (
+                                                        <span style={{
+                                                            fontSize: 9,
+                                                            padding: '1px 6px',
+                                                            borderRadius: 4,
+                                                            background: 'rgba(99,102,241,0.2)',
+                                                            color: '#818cf8',
+                                                            fontWeight: 500,
+                                                        }}>CUSTOM</span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                                                    {stage.description}
+                                                </div>
+                                            </div>
+                                            <span style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
+                                                {isExpanded ? '▲' : '▼'}
+                                            </span>
+                                        </button>
+
+                                        {isExpanded && (
+                                            <div style={{ padding: '0 14px 14px' }}>
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+                                                    Default: <code style={{
+                                                        fontSize: 10,
+                                                        background: 'rgba(0,0,0,0.15)',
+                                                        padding: '2px 5px',
+                                                        borderRadius: 3,
+                                                        wordBreak: 'break-all',
+                                                    }}>{stage.defaultPrompt}</code>
+                                                </div>
+                                                <textarea
+                                                    value={customPrompts[stage.key] || ''}
+                                                    onChange={e => setCustomPrompts(prev => ({ ...prev, [stage.key]: e.target.value }))}
+                                                    placeholder={stage.defaultPrompt}
+                                                    rows={4}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '8px 10px',
+                                                        background: 'var(--bg-tertiary)',
+                                                        border: '1px solid var(--panel-border)',
+                                                        borderRadius: 6,
+                                                        color: 'var(--text-primary)',
+                                                        fontSize: 12,
+                                                        fontFamily: 'monospace',
+                                                        resize: 'vertical' as const,
+                                                        lineHeight: 1.5,
+                                                    }}
+                                                />
+                                                {hasCustom && (
+                                                    <button
+                                                        onClick={() => handleResetPrompt(stage.key)}
+                                                        style={{
+                                                            marginTop: 6,
+                                                            padding: '4px 10px',
+                                                            fontSize: 11,
+                                                            background: 'rgba(239,68,68,0.1)',
+                                                            border: '1px solid rgba(239,68,68,0.2)',
+                                                            borderRadius: 4,
+                                                            color: '#f87171',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        Reset to Default
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+
+                            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <button
+                                    className="btn-primary"
+                                    onClick={handleSavePrompts}
+                                    disabled={promptsLoading}
+                                    style={{ fontSize: 13 }}
+                                >
+                                    {promptsLoading ? 'Saving...' : 'Save Prompts'}
+                                </button>
+                                {promptsSaved && (
+                                    <span style={{ fontSize: 12, color: '#10b981' }}>Saved!</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {activeTab === 'templates' && (
+                        <div style={{ padding: 20, textAlign: 'center' }}>
+                            <div style={{
+                                padding: '24px',
+                                background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))',
+                                borderRadius: 12,
+                                border: '1px solid rgba(99,102,241,0.15)',
+                                marginBottom: 16,
+                            }}>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+                                    Template Editor
+                                </div>
+                                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 16 }}>
+                                    Create, import, preview, and manage all {templateList.length || '...'} templates
+                                    with live Remotion rendering and editable properties.
+                                </div>
+                                <button
+                                    className="btn-primary"
+                                    onClick={() => { onClose(); setTimeout(() => { const evt = new KeyboardEvent('keydown', { key: 't', metaKey: true }); window.dispatchEvent(evt); }, 100); }}
+                                    style={{ fontSize: 13, padding: '8px 20px' }}
+                                >
+                                    Open Template Editor (⌘T)
+                                </button>
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                                You can also open it from <strong>View → Template Editor</strong> in the menu bar.
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="wizard-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
                     <button className="btn-secondary" onClick={onClose} disabled={loading}>Cancel</button>
-                    <button className="btn-primary" onClick={handleSave} disabled={loading}>
-                        {loading ? 'Saving...' : 'Save Changes'}
-                    </button>
+                    {activeTab === 'general' && (
+                        <button className="btn-primary" onClick={handleSave} disabled={loading}>
+                            {loading ? 'Saving...' : 'Save Changes'}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

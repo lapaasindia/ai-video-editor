@@ -559,6 +559,7 @@ function buildAssetSuggestions(templatePlacements) {
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
+import { getCustomPrompt } from './lib/custom_prompts.mjs';
 
 async function generateTemplatePlanWithOllama(segments, catalog, durationUs, llmConfig) {
   const templateList = catalog.map(t => ({ id: t.id, name: t.name, category: t.category }));
@@ -568,7 +569,9 @@ async function generateTemplatePlanWithOllama(segments, catalog, durationUs, llm
     text: (s.text || '').slice(0, 120)
   }));
 
-  const prompt = `You are an expert video editor AI specializing in Hindi/Hinglish content. Analyze this transcript and pick the BEST templates for key moments.
+  const customSystemPrompt = await getCustomPrompt('template_plan');
+  const systemInstruction = customSystemPrompt || 'You are an expert video editor AI specializing in Hindi/Hinglish content. Analyze this transcript and pick the BEST templates for key moments.';
+  const prompt = `${systemInstruction}
 
 Transcript segments:
 ${JSON.stringify(simplifiedSegments, null, 1)}

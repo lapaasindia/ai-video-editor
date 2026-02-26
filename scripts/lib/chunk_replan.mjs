@@ -77,6 +77,7 @@ function buildImprovementHint(qcScore) {
 async function replanChunk(chunk, originalDecision, improvementHint, llmConfig, catalog, allSegments, chunkTotal) {
   // Dynamic import to avoid circular deps
   const { runLLMPrompt, extractJsonFromLLMOutput } = await import('./llm_provider.mjs');
+  const { getCustomPrompt } = await import('./custom_prompts.mjs');
 
   const durationSec = Math.round((chunk.endUs - chunk.startUs) / 1_000_000);
   const templateOptions = catalog.slice(0, 6).map(t => ({
@@ -93,7 +94,9 @@ async function replanChunk(chunk, originalDecision, improvementHint, llmConfig, 
     .join(' ')
     .slice(0, 600);
 
-  const prompt = `You are an expert video editor creating HIGH-RETENTION content. A previous edit plan for this chunk failed quality checks. Re-plan with the improvements below.
+  const customSystemPrompt = await getCustomPrompt('chunk_replan');
+  const systemInstruction = customSystemPrompt || 'You are an expert video editor creating HIGH-RETENTION content. A previous edit plan for this chunk failed quality checks. Re-plan with the improvements below.';
+  const prompt = `${systemInstruction}
 
 CHUNK (${durationSec}s, chunk ${chunk.index + 1}/${chunkTotal}):
 "${chunk.text}"

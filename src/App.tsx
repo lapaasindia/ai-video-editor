@@ -6,6 +6,7 @@ import { PropertiesPanel } from './components/editor/PropertiesPanel';
 import { EditorProvider, useEditor } from './context/EditorContext';
 import { ModelManager } from './components/settings/ModelManager';
 import { LogViewer } from './components/debug/LogViewer';
+import { TemplateEditor } from './components/editor/TemplateEditor';
 import './App.css';
 
 // Side-effect imports to register all templates into the registry
@@ -208,6 +209,7 @@ const EditorLayout = () => {
     } = useEditor();
     const [showSettings, setShowSettings] = useState(false);
     const [showLogs, setShowLogs] = useState(false);
+    const [showTemplateEditor, setShowTemplateEditor] = useState(false);
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -216,6 +218,7 @@ const EditorLayout = () => {
             if (mod && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo?.(); }
             if (mod && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo?.(); }
             if (mod && e.key === 'i') { e.preventDefault(); importMedia?.(); }
+            if (mod && e.key === 't') { e.preventDefault(); setShowTemplateEditor(v => !v); }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
@@ -234,6 +237,7 @@ const EditorLayout = () => {
 
     const viewMenuItems: MenuItem[] = [
         { label: 'Settings', shortcut: '⌘,', action: () => setShowSettings(true) },
+        { label: 'Template Editor', shortcut: '⌘T', action: () => setShowTemplateEditor(true) },
         { label: '-', separator: true },
         { label: 'Output Logs', action: () => setShowLogs(v => !v) },
         { label: '-', separator: true },
@@ -341,6 +345,7 @@ const EditorLayout = () => {
             </div>
 
             {showSettings && <ModelManager onClose={() => setShowSettings(false)} />}
+            {showTemplateEditor && <TemplateEditor onClose={() => setShowTemplateEditor(false)} />}
             {showLogs && <LogViewer />}
         </div>
     );

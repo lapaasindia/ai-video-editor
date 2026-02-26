@@ -140,10 +140,11 @@ export async function isCodexAvailable() {
     return new Promise((resolve) => {
         execFile('which', ['codex'], (err) => {
             if (!err) { _codexAvailable = true; resolve(true); return; }
-            // Also check npx @openai/codex availability via OPENAI_API_KEY presence
-            // (npx can run it but we need the key)
-            _codexAvailable = false;
-            resolve(false);
+            // Fallback: check if codex is available via npx @openai/codex
+            execFile('npx', ['--yes', '@openai/codex', '--version'], { timeout: 15000 }, (err2) => {
+                _codexAvailable = !err2;
+                resolve(!err2);
+            });
         });
     });
 }
@@ -183,7 +184,10 @@ function runCodexWithModel(model, prompt, timeoutMs) {
 
         args.push(prompt);
 
-        const child = execFile('codex', args, {
+        const codexBin = process.env._CODEX_BIN || 'codex';
+        const finalCmd = codexBin === 'codex' ? 'codex' : codexBin;
+        const finalArgs = codexBin === 'npx' ? ['--yes', '@openai/codex', ...args] : args;
+        const child = execFile(finalCmd, finalArgs, {
             env: { ...process.env },
             maxBuffer: 10 * 1024 * 1024,
             cwd: process.cwd(),

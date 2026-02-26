@@ -145,7 +145,7 @@ export interface EditorState {
     renderResult: RenderResult | null;
     enrichmentSummary: { templateCount: number; assetCount: number } | null;
     renderProgress: { percent: number; stage: string } | null;
-    agenticProgress: { currentStep: string; percent: number; status: string; detail: string; llmProvider?: string; llmModel?: string; mode?: string; fps?: number; language?: string } | null;
+    agenticProgress: { currentStep: string; percent: number; status: string; detail: string; subStage?: string; llmProvider?: string; llmModel?: string; mode?: string; fps?: number; language?: string; stageLog?: Array<{ step: string; label: string; stepIndex: number; status: string; detail: string; subStage?: string; timestamp: string }> } | null;
     // Chunk-by-chunk state
     overlayChunkIndex: number;
     totalOverlayChunks: number;
@@ -243,7 +243,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [renderResult, setRenderResult] = useState<RenderResult | null>(null);
     const [enrichmentSummary, setEnrichmentSummary] = useState<{ templateCount: number; assetCount: number } | null>(null);
     const [renderProgress, setRenderProgress] = useState<{ percent: number; stage: string } | null>(null);
-    const [agenticProgress, setAgenticProgress] = useState<{ currentStep: string; percent: number; status: string; detail: string; llmProvider?: string; llmModel?: string; mode?: string; fps?: number; language?: string } | null>(null);
+    const [agenticProgress, setAgenticProgress] = useState<{ currentStep: string; percent: number; status: string; detail: string; subStage?: string; llmProvider?: string; llmModel?: string; mode?: string; fps?: number; language?: string; stageLog?: Array<{ step: string; label: string; stepIndex: number; status: string; detail: string; subStage?: string; timestamp: string }> } | null>(null);
     const [fullTranscript, setFullTranscript] = useState<any>(null);
     // Chunk-by-chunk overlay state
     const [overlayChunkIndex, setOverlayChunkIndex] = useState(0);
@@ -584,6 +584,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return;
         }
 
+        // Find the timeline clip to determine trim range
+        const videoClip = tracks.flatMap(t => t.clips).find(c => c.mediaId === videoItem.id && c.type === 'video');
+        const trimStartSec = videoClip?.offset || 0;
+        const trimDurationSec = videoClip?.duration || videoItem.duration || 0;
+
         setPipelineStage('transcribing');
         setPipelineError(null);
         setLastFailedStep(null);
@@ -593,12 +598,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const finishTranscribe = logger.step('transcribe', 'Transcribe pipeline', {
             projectId: currentProject.id, input: videoItem.path, mode: currentProject.aiMode,
             language: currentProject.language, model: currentProject.transcriptionModel,
+            trimStartSec, trimDurationSec,
         });
 
         try {
             setPipelineProgress(prev => prev ? { ...prev, percent: 15, message: 'Running speech recognition…' } : prev);
             logger.trace('transcribe', `POST ${BACKEND}/pipeline/transcribe`, {
-                projectId: currentProject.id, input: videoItem.path,
+                projectId: currentProject.id, input: videoItem.path, trimStartSec, trimDurationSec,
             });
 
             const res = await fetch(`${BACKEND}/pipeline/transcribe`, {
@@ -611,6 +617,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     language: currentProject.language || 'en',
                     sourceRef: videoItem.id,
                     transcriptionModel: currentProject.transcriptionModel || '',
+                    trimStartSec,
+                    trimDurationSec,
                 })
             });
 
@@ -663,7 +671,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setPipelineError(err.message);
             setStatusWrapper('error', `Transcription failed: ${err.message}`);
         }
-    }, [currentProject, media, setStatusWrapper]);
+    }, [currentProject, media, tracks, setStatusWrapper]);
 
     // ── Pipeline: Approve Transcript → Plan Cuts ──────────────────────────────
 
@@ -674,6 +682,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const videoItem = media.find(m => m.status === 'ok' && m.type.toLowerCase() === 'video');
         if (!videoItem) { logger.warning('cut-plan', 'No video with status=ok — aborting'); return; }
 
+        // Find the timeline clip to determine trim range
+        const videoClip = tracks.flatMap(t => t.clips).find(c => c.mediaId === videoItem.id && c.type === 'video');
+        const trimStartSec = videoClip?.offset || 0;
+        const trimDurationSec = videoClip?.duration || videoItem.duration || 0;
+
         setPipelineStage('planning_cuts');
         setPipelineProgress({ percent: 10, message: 'Analyzing transcript for silences…', startedAt: Date.now() });
         setStatusWrapper('processing', 'Analyzing video for cuts…');
@@ -681,6 +694,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const finishCutPlan = logger.step('cut-plan', 'Cut-plan pipeline', {
             projectId: currentProject.id, input: videoItem.path, fps: currentProject.fps,
             llmProvider: currentProject.llmProvider, llmModel: currentProject.llmModel,
+            trimStartSec, trimDurationSec,
         });
 
         try {
@@ -696,6 +710,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     mode: 'heuristic',
                     llmProvider: currentProject.llmProvider || '',
                     llmModel: currentProject.llmModel || '',
+                    trimStartSec,
+                    trimDurationSec,
                 })
             });
 
@@ -784,7 +800,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setPipelineError(err.message);
             setStatusWrapper('error', `Cut planning failed: ${err.message}`);
         }
-    }, [currentProject, media, setStatusWrapper]);
+    }, [currentProject, media, tracks, setStatusWrapper]);
 
     // ── Chunk splitting helper ─────────────────────────────────────────────────
 
@@ -1203,6 +1219,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return;
         }
 
+        // Find the timeline clip to determine trim range
+        const videoClip = tracks.flatMap(t => t.clips).find(c => c.mediaId === videoItem.id && c.type === 'video');
+        const trimStartSec = videoClip?.offset || 0;
+        const trimDurationSec = videoClip?.duration || videoItem.duration || 0;
+
         setPipelineStage('transcribing');
         setPipelineError(null);
         setAgenticProgress({ currentStep: 'starting', percent: 0, status: 'running', detail: 'Initializing AI pipeline...' });
@@ -1225,16 +1246,30 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         logger.info('agentic', `Progress poll: step=${progress.currentStep} ${progress.percent}%`, { detail: progress.detail });
                         lastPolledStep = progress.currentStep;
                     }
+                    // Log new stage transitions to the logger
+                    const stageLog = progress.stageLog || [];
+                    if (stageLog.length > 0) {
+                        const latest = stageLog[stageLog.length - 1];
+                        const logKey = `${latest.step}:${latest.status}:${latest.subStage || ''}`;
+                        if (logKey !== lastPolledStep) {
+                            const icon = latest.status === 'done' ? '✔' : latest.status === 'skipped' ? '⏭' : '▶';
+                            const sub = latest.subStage ? ` → ${latest.subStage.replace(/_/g, ' ')}` : '';
+                            logger.info('agentic', `${icon} [${latest.stepIndex + 1}/12] ${latest.label}${sub}: ${latest.detail || latest.status}`);
+                            lastPolledStep = logKey;
+                        }
+                    }
                     setAgenticProgress({
                         currentStep: progress.currentStep || 'processing',
                         percent: progress.percent || 0,
                         status: progress.status || 'running',
                         detail: progress.detail || '',
+                        subStage: progress.subStage || '',
                         llmProvider: progress.llmProvider,
                         llmModel: progress.llmModel,
                         mode: progress.mode,
                         fps: progress.fps,
                         language: progress.language,
+                        stageLog,
                     });
                     setStatusWrapper('processing', `AI Step: ${progress.currentStep || 'processing'} (${progress.percent || 0}%)`);
                 }
@@ -1259,6 +1294,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     fetchExternal: true,
                     llmProvider: currentProject.llmProvider || '',
                     llmModel: currentProject.llmModel || '',
+                    trimStartSec,
+                    trimDurationSec,
                 })
             });
 
@@ -1318,6 +1355,10 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const reviewDecisions: Record<string, string> = (reviewRes.status === 'fulfilled' ? reviewRes.value?.decisions : null) || {};
 
             const ts = Date.now();
+
+            if (!hrPlan) {
+                logger.warning('agentic', 'HR plan not available from project-data endpoint — video track will keep original clip');
+            }
 
             setTracks(prev => {
                 let next = [...prev];
@@ -1584,7 +1625,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setAgenticProgress({ currentStep: 'error', percent: 0, status: 'failed', detail: err.message });
             setStatusWrapper('error', `AI Edit failed: ${err.message}`);
         }
-    }, [currentProject, media, setStatusWrapper]);
+    }, [currentProject, media, tracks, setStatusWrapper]);
 
     // ── Pipeline: Render ──────────────────────────────────────────────────────
 
@@ -1691,29 +1732,8 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setIsPlaying(prev => !prev);
     }, []);
 
-    useEffect(() => {
-        let animationFrame: number | null = null;
-        let lastTime: number | null = null;
-
-        const loop = (timestamp: number) => {
-            if (lastTime !== null) {
-                const delta = (timestamp - lastTime) / 1000;
-                setCurrentTime(prev => prev + delta);
-            }
-            lastTime = timestamp;
-            if (isPlaying) {
-                animationFrame = requestAnimationFrame(loop);
-            }
-        };
-
-        if (isPlaying) {
-            animationFrame = requestAnimationFrame(loop);
-        }
-
-        return () => {
-            if (animationFrame) cancelAnimationFrame(animationFrame);
-        };
-    }, [isPlaying]);
+    // Time is driven by the Remotion player via timeupdate → seekTo in PreviewPanel.
+    // The RAF loop is intentionally disabled to prevent seekTo() calls interrupting audio playback.
 
     const seekTo = useCallback((time: number) => {
         setCurrentTime(time);

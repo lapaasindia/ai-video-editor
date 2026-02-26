@@ -395,7 +395,22 @@ function escapeSubtitlePath(filePath) {
 }
 
 async function renderSegment({ sourcePath, startUs, endUs, outputPath, profile, seamFadeMs = 50, paddingMs = 0, audioLeadMs = 0, audioLagMs = 0 }) {
-  const isAudio = isAudioPath(sourcePath);
+  // Detect audio-only by extension first, then probe for video stream as fallback
+  let isAudio = isAudioPath(sourcePath);
+  if (!isAudio) {
+    try {
+      const { stdout: probeOut } = await execFile('ffprobe', [
+        '-v', 'quiet', '-select_streams', 'v:0',
+        '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', sourcePath,
+      ], { timeout: 10000 });
+      if (!probeOut || !probeOut.toString().trim()) {
+        isAudio = true; // No video stream found
+        process.stderr.write(`[Render] ${path.basename(sourcePath)} has no video stream — treating as audio-only\n`);
+      }
+    } catch {
+      // ffprobe failed — check if file has video by trying a different approach
+    }
+  }
   const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
   const aEnc = await hwEncodeAudioArgs({ bitrate: '160k' });
   const decArgs = await hwDecodeArgs();
@@ -484,7 +499,16 @@ async function renderSegment({ sourcePath, startUs, endUs, outputPath, profile, 
  * @param {number} [opts.seamFadeMs=50] - Audio fade duration
  */
 async function renderChunkPreview({ sourcePath, startUs, endUs, outputPath, seamFadeMs = 50 }) {
-  const isAudio = isAudioPath(sourcePath);
+  let isAudio = isAudioPath(sourcePath);
+  if (!isAudio) {
+    try {
+      const { stdout: probeOut } = await execFile('ffprobe', [
+        '-v', 'quiet', '-select_streams', 'v:0',
+        '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', sourcePath,
+      ], { timeout: 10000 });
+      if (!probeOut || !probeOut.toString().trim()) isAudio = true;
+    } catch { /* fall through */ }
+  }
   const fadeSec = Math.max(0.02, seamFadeMs / 1000);
   const segDurationSec = (endUs - startUs) / 1_000_000;
   const fadeOutStart = Math.max(0, segDurationSec - fadeSec);
@@ -563,24 +587,27 @@ async function preRenderTemplates(timeline, tempDir, profile) {
   const templateClips = overlayClips.filter(c => c.clipType === 'template_clip');
   const results = {};
 
-  if (templateClips.length === 0) return results;
+  if (templateClips.length === 0) {
+    process.stderr.write(`[Render:templates] No template clips to pre-render\n`);
+    return results;
+  }
 
-  console.error(`[Render] Pre-rendering ${templateClips.length} templates...`);
+  process.stderr.write(`[Render:templates] Pre-rendering ${templateClips.length} templates...\n`);
 
   for (const clip of templateClips) {
     const compositionId = `${clip.templateId}-landscape`; // Default to landscape for now
     const outputPath = path.join(tempDir, `template-${clip.id}.mov`);
 
     // Construct props from clip metadata/content
-    // We assume clip.content contains the strict schema props (headline, subline, etc.)
     const props = {
       ...clip.content,
       ...clip.style
     };
 
+    process.stderr.write(`[Render:templates] Rendering ${clip.id} (${compositionId}) with props: ${JSON.stringify(props).slice(0,200)}\n`);
+
     try {
-      // Use npx remotion render
-      // We use prores for alpha channel support
+      // Use npx remotion render with prores for alpha channel support
       await run('npx', [
         'remotion', 'render',
         'src/index.ts',
@@ -593,10 +620,12 @@ async function preRenderTemplates(timeline, tempDir, profile) {
       ], 10 * 60 * 1000); // 10 min timeout per template
 
       results[clip.id] = outputPath;
+      process.stderr.write(`[Render:templates] ✓ ${clip.id} rendered to ${outputPath}\n`);
     } catch (e) {
-      console.warn(`[Render] Failed to render template ${clip.id}: ${e.message}`);
+      process.stderr.write(`[Render:templates] ✗ ${clip.id} FAILED: ${e.message.split('\n')[0]}\n`);
     }
   }
+  process.stderr.write(`[Render:templates] ${Object.keys(results).length}/${templateClips.length} templates rendered successfully\n`);
   return results;
 }
 
@@ -610,7 +639,10 @@ async function renderWithOverlayCompositor({
   const overlayClips = collectOverlayClips(timeline);
   const warnings = [];
 
+  process.stderr.write(`[Render:overlay] Found ${overlayClips.length} overlay clips (${overlayClips.filter(c=>c.clipType==='template_clip').length} templates, ${overlayClips.filter(c=>c.clipType==='asset_clip').length} assets)\n`);
+
   if (overlayClips.length === 0) {
+    process.stderr.write(`[Render:overlay] No overlay clips — copying stitched as final\n`);
     await fs.copyFile(stitchedPath, outputPath);
     return {
       appliedCount: 0,
@@ -625,18 +657,26 @@ async function renderWithOverlayCompositor({
     if (clip.clipType === 'template_clip') {
       overlayPath = templatePaths[clip.id];
       if (!overlayPath) {
-        warnings.push(`Skipped template clip ${clip.id}: pre-render failed or missing.`);
+        const msg = `Skipped template clip ${clip.id} (${clip.templateId}): pre-render failed or missing.`;
+        warnings.push(msg);
+        process.stderr.write(`[Render:overlay] ${msg}\n`);
         continue;
       }
     } else {
       overlayPath = await resolveOverlaySourcePath(clip);
+      if (!overlayPath) {
+        process.stderr.write(`[Render:overlay] Asset ${clip.id}: sourceRef='${clip.sourceRef}' — resolveOverlaySourcePath returned empty\n`);
+      }
     }
 
     if (!overlayPath) {
-      warnings.push(`Skipped overlay clip ${clip.id}: source path not available.`);
+      const msg = `Skipped overlay clip ${clip.id}: source path not available (sourceRef='${clip.sourceRef}').`;
+      warnings.push(msg);
+      process.stderr.write(`[Render:overlay] ${msg}\n`);
       continue;
     }
 
+    process.stderr.write(`[Render:overlay] Resolved ${clip.clipType} ${clip.id}: ${overlayPath}\n`);
     resolved.push({
       ...clip,
       overlayPath,
@@ -644,7 +684,10 @@ async function renderWithOverlayCompositor({
     });
   }
 
+  process.stderr.write(`[Render:overlay] ${resolved.length}/${overlayClips.length} overlays resolved for compositing\n`);
+
   if (resolved.length === 0) {
+    process.stderr.write(`[Render:overlay] All overlays failed to resolve — copying stitched as final\n`);
     await fs.copyFile(stitchedPath, outputPath);
     return {
       appliedCount: 0,
@@ -652,81 +695,80 @@ async function renderWithOverlayCompositor({
     };
   }
 
-  const args = ['-y', '-loglevel', 'error', '-i', stitchedPath];
-  for (const overlay of resolved) {
-    if (overlay.isImage) {
-      args.push('-loop', '1', '-i', overlay.overlayPath);
-      continue;
-    }
-    args.push('-i', overlay.overlayPath);
-  }
-
-  const filters = [];
-  let current = 'vbase0';
-  filters.push(`[0:v]setpts=PTS-STARTPTS[${current}]`);
+  // Apply overlays one at a time in sequential ffmpeg passes.
+  // Each pass: take current video, overlay one image, output next intermediate.
+  const tempDir = path.dirname(outputPath);
+  let currentInput = stitchedPath;
+  let appliedCount = 0;
+  const intermediates = []; // track files to clean up
 
   for (let index = 0; index < resolved.length; index += 1) {
     const clip = resolved[index];
-    const inIdx = index + 1;
-    const scaled = `ovscaled${index}`;
-    const baseRef = `ovbase${index}`;
-    const alpha = `ovalpha${index}`;
-    const output = `vout${index}`;
     const start = usToSec(clip.startUs);
     const end = usToSec(clip.endUs);
-    const isTemplate = clip.clipType === 'template_clip';
-    // Templates (ProRes) already have alpha, no need to force format=rgba or colorchannelmixer for transparency unless optimizing
-    // But we might want to scale them.
+    const isLast = index === resolved.length - 1;
+    const stepOutput = isLast ? outputPath : path.join(tempDir, `overlay-step-${index}.mp4`);
 
-    const scaleW = 'main_w'; // Full screen for templates usually
-    const scaleH = 'main_h';
-    // If it's an image/logo, we might scale differently. For now, assume full screen overlays for templates.
+    process.stderr.write(`[Render:overlay] Applying ${clip.clipType} ${clip.id} (${index + 1}/${resolved.length}): ${path.basename(clip.overlayPath)} @ ${start}s-${end}s\n`);
 
-    // If it's NOT a template (e.g. user image), use correct scaling
-    const finalScaleW = isTemplate ? 'main_w' : (isImagePath(clip.overlayPath) ? '-1' : 'main_w*0.3');
-    const finalScaleH = isTemplate ? 'main_h' : (isImagePath(clip.overlayPath) ? 'main_h*0.8' : '-1');
+    try {
+      const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
+      // Use simple scale for overlay image to 80% of 480 height (the stitched is 480p).
+      // Ensure even dimensions with ceil(x/2)*2 trick.
+      // For images: scale to 80% of base height, centered.
+      // For video overlays: scale to match base.
+      const filter = clip.isImage
+        ? `[1:v]scale=ceil(iw*0.8/2)*2:ceil(ih*0.8/2)*2[ov];[0:v][ov]overlay=x=(W-w)/2:y=(H-h)/2:enable='between(t,${start},${end})'`
+        : `[1:v]scale=ceil(iw/2)*2:ceil(ih/2)*2[ov];[0:v][ov]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='between(t,${start},${end})'`;
 
-    // Simple overlay logic
-    // We need to ensure timestamps align. 
-    // overlay=enable='between(t,start,end)'
+      await run('ffmpeg', [
+        '-y', '-loglevel', 'warning',
+        '-i', currentInput,
+        '-i', clip.overlayPath,
+        '-filter_complex', filter,
+        '-map', '0:a?',
+        ...vEnc,
+        '-c:a', 'copy',
+        '-movflags', '+faststart',
+        stepOutput,
+      ]);
 
-    // Note: Prores video inputs [inIdx] include alpha.
-
-    filters.push(`[${inIdx}:v]scale=${finalScaleW}:${finalScaleH}:force_original_aspect_ratio=decrease[${scaled}]`);
-
-    filters.push(
-      `[${current}][${scaled}]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='between(t,${start},${end})'[${output}]`
-    );
-    current = output;
+      // Only mark previous intermediate for cleanup after success
+      if (currentInput !== stitchedPath) {
+        intermediates.push(currentInput);
+      }
+      currentInput = stepOutput;
+      appliedCount += 1;
+      process.stderr.write(`[Render:overlay] ✓ ${clip.id} applied\n`);
+    } catch (e) {
+      const errLine = e.message.split('\n').find(l => l.includes('Error') || l.includes('error')) || e.message.split('\n')[0];
+      process.stderr.write(`[Render:overlay] ✗ ${clip.id} failed: ${errLine}\n`);
+      warnings.push(`Overlay ${clip.id} failed: ${errLine}`);
+      // currentInput stays as is — next overlay builds on the last successful output
+    }
   }
 
-  const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
-  args.push(
-    '-filter_complex',
-    filters.join(';'),
-    '-map', `[${current}]`,
-    '-map', '0:a?',
-    ...vEnc,
-    '-c:a', 'copy',
-    '-movflags', '+faststart',
-    outputPath,
-  );
+  // Clean up intermediates
+  for (const f of intermediates) {
+    await fs.unlink(f).catch(() => {});
+  }
 
-  try {
-    await run('ffmpeg', args);
-    return {
-      appliedCount: resolved.length,
-      warnings,
-    };
-  } catch (e) {
-    console.error(e);
-    warnings.push('Overlay compositor failed. Exported source-cut timeline only.');
+  // If we applied nothing, copy stitched as final
+  if (appliedCount === 0) {
+    process.stderr.write(`[Render:overlay] No overlays applied successfully — copying stitched\n`);
     await fs.copyFile(stitchedPath, outputPath);
-    return {
-      appliedCount: 0,
-      warnings,
-    };
+  } else if (currentInput !== outputPath) {
+    // Final output is at currentInput, move it to outputPath
+    await fs.rename(currentInput, outputPath).catch(async () => {
+      await fs.copyFile(currentInput, outputPath);
+      await fs.unlink(currentInput).catch(() => {});
+    });
   }
+
+  return {
+    appliedCount,
+    warnings,
+  };
 }
 
 async function main() {
@@ -806,11 +848,17 @@ async function main() {
     const setup = await tracker.run('render-setup', async () => {
       const timeline = await readJson(timelinePath);
       const sourceClips = collectSourceClips(timeline);
+      const allClips = Array.isArray(timeline?.clips) ? timeline.clips : [];
+      const clipsByType = {};
+      for (const c of allClips) { clipsByType[c.clipType] = (clipsByType[c.clipType] || 0) + 1; }
+      process.stderr.write(`[Render:setup] Timeline loaded: ${allClips.length} clips (${JSON.stringify(clipsByType)}), durationUs=${timeline.durationUs}, fps=${timeline.fps}\n`);
+      process.stderr.write(`[Render:setup] Source clips after merge: ${sourceClips.length}\n`);
       if (sourceClips.length === 0) {
         throw new Error('No source clips available in timeline for rendering.');
       }
       const profile = qualityProfile(quality);
       const defaultSourcePath = await resolveDefaultSourcePath(projectDir);
+      process.stderr.write(`[Render:setup] Default source path: ${defaultSourcePath || 'NOT FOUND'}\n`);
       if (!defaultSourcePath) {
         throw new Error(
           'Could not resolve source video path. Ensure transcript.json or media/metadata.json includes source path.',
@@ -916,6 +964,8 @@ async function main() {
       });
     }
 
+    process.stderr.write(`[Render] Template pre-render results: ${Object.keys(templatePaths).length} succeeded\n`);
+
     const overlayResult = await tracker.run('overlay-composite', async () => {
       const retryResult = await withRetries(
         'overlay-composite',
@@ -935,6 +985,10 @@ async function main() {
       return retryResult.result;
     });
     warnings.push(...overlayResult.warnings);
+    process.stderr.write(`[Render] Overlay composite done: ${overlayResult.appliedCount} overlays applied, ${overlayResult.warnings.length} warnings\n`);
+    if (overlayResult.warnings.length > 0) {
+      process.stderr.write(`[Render] Overlay warnings:\n${overlayResult.warnings.map(w => `  - ${w}`).join('\n')}\n`);
+    }
 
     // ── Watermark / Branding Overlay ──────────────────────────────────────────
     let watermarkedPath = compositedPath;

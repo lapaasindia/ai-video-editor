@@ -5,7 +5,7 @@ import { useEditor } from '../../context/EditorContext';
 export const LogViewer: React.FC = () => {
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [isVisible, setIsVisible] = useState(false);
-    const { pipelineStage, currentProject, pipelineProgress } = useEditor();
+    const { pipelineStage, currentProject, pipelineProgress, agenticProgress } = useEditor();
 
     useEffect(() => {
         return logger.subscribe(setLogs);
@@ -80,9 +80,24 @@ export const LogViewer: React.FC = () => {
                     {pipelineStage !== 'idle' && (
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '11px' }}>
                             <span style={{ color: '#c586c0' }}>Stage:</span>
-                            <span style={{ color: '#ce9178' }}>{pipelineStage}</span>
-                            {pipelineProgress && (
-                                <span style={{ color: '#4ec9b0' }}>{Math.round(pipelineProgress.percent)}% - {pipelineProgress.message}</span>
+                            {agenticProgress ? (
+                                <>
+                                    <span style={{ color: '#ce9178' }}>{agenticProgress.currentStep?.replace(/_/g, ' ')}</span>
+                                    {agenticProgress.subStage && (
+                                        <span style={{ color: '#9cdcfe' }}>→ {agenticProgress.subStage.replace(/_/g, ' ')}</span>
+                                    )}
+                                    <span style={{ color: '#4ec9b0' }}>{agenticProgress.percent}%</span>
+                                    {agenticProgress.detail && (
+                                        <span style={{ color: '#808080', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agenticProgress.detail}</span>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <span style={{ color: '#ce9178' }}>{pipelineStage}</span>
+                                    {pipelineProgress && (
+                                        <span style={{ color: '#4ec9b0' }}>{Math.round(pipelineProgress.percent)}% - {pipelineProgress.message}</span>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}

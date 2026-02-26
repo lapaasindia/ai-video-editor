@@ -17,6 +17,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
+import { getCustomPrompt } from './lib/custom_prompts.mjs';
 
 function readArg(flag, fallback = '') {
     const idx = process.argv.indexOf(flag);
@@ -169,7 +170,9 @@ async function generateOverlayPlanForChunk(chunkSegments, catalog, chunkStartUs,
 
     const chunkDurationSec = Math.round((chunkEndUs - chunkStartUs) / 1_000_000);
 
-    const prompt = `You are an expert video editor AI. Analyze this transcript chunk and suggest overlay templates.
+    const customSystemPrompt = await getCustomPrompt('overlay_plan');
+    const systemInstruction = customSystemPrompt || 'You are an expert video editor AI. Analyze this transcript chunk and suggest overlay templates.';
+    const prompt = `${systemInstruction}
 
 Transcript chunk (${chunkDurationSec}s):
 ${JSON.stringify(simplifiedSegments, null, 1)}

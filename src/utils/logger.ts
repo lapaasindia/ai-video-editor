@@ -161,8 +161,10 @@ window.addEventListener('error', (event) => {
 });
 
 window.addEventListener('unhandledrejection', (event) => {
+    const reason = String(event.reason);
+    if (reason.includes('NotSupportedError') || reason.includes('The operation is not supported')) return;
     logger.err('general', 'Unhandled Promise Rejection', {
-        reason: String(event.reason),
+        reason,
         stack: event.reason?.stack,
     });
 });

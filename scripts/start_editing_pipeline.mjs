@@ -7,6 +7,7 @@ import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createStageTracker, recordProjectTelemetry } from './lib/pipeline_telemetry.mjs';
 import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
+import { getCustomPrompt } from './lib/custom_prompts.mjs';
 import { audioExtractArgs, hwDecodeArgs, parallelMap, detectHWAccel, isMlxWhisperAvailable, transcribeWithMlxWhisper } from './lib/metal_accel.mjs';
 import {
   validateCanonicalTranscript,
@@ -981,7 +982,9 @@ async function generateCutPlanWithOllama(transcriptPayload, llmConfig) {
   const rangeStartUs = trimmed.length > 0 ? trimmed[0].startUs : 0;
   const rangeEndUs = trimmed.length > 0 ? trimmed[trimmed.length - 1].endUs : 0;
 
-  const prompt = `You are an expert video editor AI. Analyze this Hindi/Hinglish transcript.
+  const customSystemPrompt = await getCustomPrompt('start_editing');
+  const systemInstruction = customSystemPrompt || 'You are an expert video editor AI. Analyze this Hindi/Hinglish transcript.';
+  const prompt = `${systemInstruction}
 
 Transcript segments (${simplifiedTranscript.length} of ${segments.length} total):
 ${JSON.stringify(simplifiedTranscript, null, 1)}

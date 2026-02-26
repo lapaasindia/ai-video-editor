@@ -126,10 +126,37 @@ async function main() {
         'timeline_assembly',
     ];
 
+    const stepLabels = {
+        transcription: 'Transcription',
+        transcript_annotation: 'Transcript Annotation',
+        semantic_chunking: 'Semantic Chunking',
+        high_retention_analysis: 'High-Retention Analysis',
+        chunk_qc: 'Chunk Quality Control',
+        asset_quality: 'Asset Quality Gate',
+        cut_safety_review: 'Cut Safety Review',
+        seam_quality: 'Seam Quality Analysis',
+        cross_chunk_review: 'Cross-Chunk Consistency',
+        global_analysis: 'Global Video Intelligence',
+        pre_render_qa: 'Pre-Render QA',
+        timeline_assembly: 'Timeline Assembly',
+    };
+
     let currentStepIndex = 0;
     let results = {};
+    const stageLog = [];
 
-    async function updateProgress(step, status, detail = '') {
+    async function updateProgress(step, status, detail = '', subStage = '') {
+        const entry = {
+            step,
+            label: stepLabels[step] || step,
+            stepIndex: currentStepIndex,
+            status,
+            detail,
+            subStage,
+            timestamp: new Date().toISOString(),
+        };
+        stageLog.push(entry);
+
         const progress = {
             projectId,
             startedAt,
@@ -138,9 +165,11 @@ async function main() {
             totalSteps: steps.length,
             status,
             detail,
+            subStage,
             percent: Math.round((currentStepIndex / steps.length) * 100),
             updatedAt: new Date().toISOString(),
             completedSteps: steps.slice(0, currentStepIndex),
+            stageLog,
             llmProvider,
             llmModel,
             mode,
@@ -148,7 +177,8 @@ async function main() {
             language
         };
         await writeJson(agentStatePath, progress);
-        console.error(`[Agent] Step ${currentStepIndex + 1}/${steps.length}: ${step} — ${status} ${detail} [LLM: ${llmProvider}/${llmModel}]`);
+        const sub = subStage ? ` [${subStage}]` : '';
+        console.error(`[Agent] Step ${currentStepIndex + 1}/${steps.length}: ${stepLabels[step] || step}${sub} — ${status} ${detail} [LLM: ${llmProvider}/${llmModel}]`);
     }
 
     try {
@@ -168,6 +198,7 @@ async function main() {
 
         const transcribeArgs = [
             '--project-id', projectId,
+            '--project-dir', projectDir,
             '--input', input,
             '--mode', mode,
             '--language', language,
@@ -188,10 +219,10 @@ async function main() {
             const isMock = engine.includes('stub') || existing.words?.[0]?.text === 'Mock';
             if (isMock) {
                 console.error('[Agent] Existing transcript is mock — running real transcription with Sarvam');
-                await updateProgress('transcription', 'running', 'Transcribing with Sarvam AI...');
+                await updateProgress('transcription', 'running', 'Transcribing with Sarvam AI...', 'sarvam_transcribe');
                 startEditingResult = await runScriptStep('start_editing_pipeline.mjs', transcribeArgs);
             } else {
-                await updateProgress('transcription', 'skipped', `Using existing transcript (${existing.segments?.length ?? 0} segments)`);
+                await updateProgress('transcription', 'skipped', `Using existing transcript (${existing.segments?.length ?? 0} segments)`, 'cache_check');
                 startEditingResult = {
                     transcript: existing,
                     removeRanges: [],
@@ -200,7 +231,7 @@ async function main() {
                 };
             }
         } else {
-            await updateProgress('transcription', 'running', 'Transcribing with Sarvam AI...');
+            await updateProgress('transcription', 'running', 'Transcribing with Sarvam AI...', 'sarvam_transcribe');
             startEditingResult = await runScriptStep('start_editing_pipeline.mjs', transcribeArgs);
         }
 
@@ -217,7 +248,7 @@ async function main() {
 
         // ── Step 2: Transcript Annotation ─────────────────────────────────────
         currentStepIndex = 1;
-        await updateProgress('transcript_annotation', 'running', 'Annotating transcript quality flags...');
+        await updateProgress('transcript_annotation', 'running', 'Annotating transcript quality flags...', 'quality_flags');
 
         try {
             const annotationResult = await runScriptStep('annotate_transcript.mjs', [
@@ -242,7 +273,7 @@ async function main() {
 
         // ── Speaker Diarization (sub-step after annotation) ──────────────────
         try {
-            await updateProgress('transcript_annotation', 'running', 'Running speaker diarization...');
+            await updateProgress('transcript_annotation', 'running', 'Running speaker diarization...', 'speaker_diarization');
             const diarizeResult = await runScriptStep('lib/speaker_diarization.mjs', [
                 '--project-id', projectId,
                 '--project-dir', projectDir,
@@ -291,7 +322,7 @@ async function main() {
         // Guarantees something happens every 5-7 seconds.
         currentStepIndex = 3;
         await updateProgress('high_retention_analysis', 'running',
-            'AI analysing transcript chunks for high-retention editing...');
+            'AI analysing transcript chunks for high-retention editing...', 'llm_chunk_analysis');
 
         const hrResult = await runScriptStep('high_retention_pipeline.mjs', [
             '--project-id', projectId,
@@ -343,7 +374,7 @@ async function main() {
 
         // ── Step 5: Chunk QC Scoring + Iterative Re-Plan Loop ────────────────
         currentStepIndex = 4;
-        await updateProgress('chunk_qc', 'running', 'Scoring chunk edit plan quality...');
+        await updateProgress('chunk_qc', 'running', 'Scoring chunk edit plan quality...', 'qc_scoring');
 
         try {
             // Initial QC scoring
@@ -363,7 +394,7 @@ async function main() {
             // If chunks failed, run iterative re-plan loop
             if (results.chunkQc.failed > 0) {
                 await updateProgress('chunk_qc', 'running',
-                    `${results.chunkQc.failed} chunks below threshold — re-planning with improvement hints...`
+                    `${results.chunkQc.failed} chunks below threshold — re-planning with improvement hints...`, 'iterative_replan'
                 );
 
                 try {
@@ -410,7 +441,7 @@ async function main() {
 
         // ── Step 6: Asset Quality Gate ──────────────────────────────────────────
         currentStepIndex = 5;
-        await updateProgress('asset_quality', 'running', 'Validating fetched assets...');
+        await updateProgress('asset_quality', 'running', 'Validating fetched assets...', 'validate_assets');
 
         try {
             const assetQResult = await runScriptStep('lib/asset_quality.mjs', [
@@ -436,7 +467,7 @@ async function main() {
 
         // ── Step 7: Cut Safety Review ──────────────────────────────────────────
         currentStepIndex = 6;
-        await updateProgress('cut_safety_review', 'running', 'Reviewing cut safety and seam quality...');
+        await updateProgress('cut_safety_review', 'running', 'Reviewing cut safety and seam quality...', 'safety_check');
 
         try {
             const cutSafetyResult = await runScriptStep('lib/cut_safety.mjs', [
@@ -461,7 +492,7 @@ async function main() {
 
         // ── Step 8: Seam Quality Analysis ──────────────────────────────────────
         currentStepIndex = 7;
-        await updateProgress('seam_quality', 'running', 'Analysing audio seam quality at cut points...');
+        await updateProgress('seam_quality', 'running', 'Analysing audio seam quality at cut points...', 'audio_analysis');
 
         try {
             const seamResult = await runScriptStep('lib/seam_quality.mjs', [
@@ -486,7 +517,7 @@ async function main() {
 
         // ── Step 9: Cross-Chunk Consistency Review ──────────────────────────────
         currentStepIndex = 8;
-        await updateProgress('cross_chunk_review', 'running', 'Reviewing cross-chunk consistency...');
+        await updateProgress('cross_chunk_review', 'running', 'Reviewing cross-chunk consistency...', 'consistency_review');
 
         try {
             const crossResult = await runScriptStep('lib/cross_chunk_review.mjs', [
@@ -511,7 +542,7 @@ async function main() {
 
         // ── Step 10: Global Video Intelligence ──────────────────────────────────
         currentStepIndex = 9;
-        await updateProgress('global_analysis', 'running', 'Running global video intelligence pass...');
+        await updateProgress('global_analysis', 'running', 'Running global video intelligence pass...', 'video_intelligence');
 
         try {
             const globalResult = await runScriptStep('global_video_analysis.mjs', [
@@ -536,7 +567,7 @@ async function main() {
 
         // ── Step 11: Pre-Render QA ──────────────────────────────────────────
         currentStepIndex = 10;
-        await updateProgress('pre_render_qa', 'running', 'Running pre-render quality checks...');
+        await updateProgress('pre_render_qa', 'running', 'Running pre-render quality checks...', 'qa_checks');
 
         try {
             const preQaResult = await runScriptStep('lib/pre_render_qa.mjs', [
@@ -561,6 +592,7 @@ async function main() {
 
         // ── Step 12: Timeline Assembly ──────────────────────────────────────
         currentStepIndex = 11;
+        await updateProgress('timeline_assembly', 'running', 'Assembling final timeline from AI decisions...', 'build_timeline');
 
         // Apply human review decisions: mark rejected chunks as cut in the HR plan
         try {
@@ -599,7 +631,187 @@ async function main() {
             console.error(`[Agent] Human review application failed (non-blocking): ${e.message}`);
         }
 
-        await updateProgress('timeline_assembly', 'done', 'Timeline enriched with high-retention AI edits');
+        // ── Build timeline.json from pipeline artifacts ──────────────────────
+        try {
+            const transcriptPath = path.join(projectDir, 'transcript.json');
+            const cutPlanPath = path.join(projectDir, 'cut-plan.json');
+            const hrPlanPath = path.join(projectDir, 'high-retention-plan.json');
+            const timelinePath = path.join(projectDir, 'timeline.json');
+
+            const transcript = await readJson(transcriptPath).catch(() => ({}));
+            const cutPlan = await readJson(cutPlanPath).catch(() => ({}));
+            const hrPlan = await readJson(hrPlanPath).catch(() => ({}));
+
+            const durationUs = Number(transcript.source?.durationUs || 0);
+            const fpsNum = Number(fps || 30);
+            const now = new Date().toISOString();
+
+            // Collect all remove ranges (from silence cuts + HR cut decisions)
+            const removeRanges = [
+                ...(cutPlan.removeRanges || []),
+                ...(hrPlan.removeRanges || []),
+            ].sort((a, b) => Number(a.startUs) - Number(b.startUs));
+
+            // Also mark HR decisions with cut=true as remove ranges
+            const hrDecisions = Array.isArray(hrPlan.decisions) ? hrPlan.decisions : [];
+            for (const d of hrDecisions) {
+                if (d.cut && d.startUs != null && d.endUs != null) {
+                    removeRanges.push({ startUs: Number(d.startUs), endUs: Number(d.endUs), reason: d.cutReason || 'ai-cut' });
+                }
+            }
+            removeRanges.sort((a, b) => Number(a.startUs) - Number(b.startUs));
+
+            // Merge overlapping remove ranges
+            const mergedRemove = [];
+            for (const r of removeRanges) {
+                const s = Number(r.startUs), e = Number(r.endUs);
+                if (mergedRemove.length > 0 && s <= mergedRemove[mergedRemove.length - 1].endUs) {
+                    mergedRemove[mergedRemove.length - 1].endUs = Math.max(mergedRemove[mergedRemove.length - 1].endUs, e);
+                } else {
+                    mergedRemove.push({ startUs: s, endUs: e });
+                }
+            }
+
+            // Build source clips from kept ranges (inverse of remove ranges)
+            const sourceClips = [];
+            let cursor = 0;
+            let timelineCursor = 0;
+            for (const r of mergedRemove) {
+                if (r.startUs > cursor) {
+                    const clipDur = r.startUs - cursor;
+                    sourceClips.push({
+                        clipId: `source-${sourceClips.length + 1}`,
+                        trackId: 'track-video-main',
+                        clipType: 'source_clip',
+                        startUs: timelineCursor,
+                        endUs: timelineCursor + clipDur,
+                        sourceStartUs: cursor,
+                        sourceEndUs: r.startUs,
+                        sourceRef: sourceRef,
+                        effects: {},
+                        transform: {},
+                        meta: { generatedBy: 'agentic-pipeline' },
+                    });
+                    timelineCursor += clipDur;
+                }
+                cursor = r.endUs;
+            }
+            // Final segment after last cut
+            if (cursor < durationUs) {
+                const clipDur = durationUs - cursor;
+                sourceClips.push({
+                    clipId: `source-${sourceClips.length + 1}`,
+                    trackId: 'track-video-main',
+                    clipType: 'source_clip',
+                    startUs: timelineCursor,
+                    endUs: timelineCursor + clipDur,
+                    sourceStartUs: cursor,
+                    sourceEndUs: durationUs,
+                    sourceRef: sourceRef,
+                    effects: {},
+                    transform: {},
+                    meta: { generatedBy: 'agentic-pipeline' },
+                });
+                timelineCursor += clipDur;
+            }
+
+            // If no cuts, single source clip for the whole video
+            if (sourceClips.length === 0) {
+                sourceClips.push({
+                    clipId: 'source-1',
+                    trackId: 'track-video-main',
+                    clipType: 'source_clip',
+                    startUs: 0,
+                    endUs: durationUs,
+                    sourceStartUs: 0,
+                    sourceEndUs: durationUs,
+                    sourceRef: sourceRef,
+                    effects: {},
+                    transform: {},
+                    meta: { generatedBy: 'agentic-pipeline' },
+                });
+                timelineCursor = durationUs;
+            }
+
+            // Build template clips
+            const templatePlacements = hrPlan.templatePlacements || [];
+            const templateClips = templatePlacements.map((p, i) => ({
+                clipId: p.id || `tpl-clip-${i + 1}`,
+                trackId: 'track-template-overlay',
+                clipType: 'template_clip',
+                templateId: p.templateId || p.id,
+                templateName: p.templateName || '',
+                startUs: Number(p.startUs || 0),
+                endUs: Number(p.endUs || 0),
+                sourceRef: '',
+                content: p.content || {},
+                effects: {},
+                transform: {},
+                meta: { generatedBy: 'agentic-pipeline', aiReason: p.aiReason || '' },
+            }));
+
+            // Build asset / B-roll clips
+            const assetSuggestions = hrPlan.assetSuggestions || [];
+            const assetClips = assetSuggestions.map((a, i) => ({
+                clipId: a.id || `asset-clip-${i + 1}`,
+                trackId: 'track-broll',
+                clipType: 'asset_clip',
+                startUs: Number(a.startUs || 0),
+                endUs: Number(a.endUs || 0),
+                sourceRef: a.localPath || '',
+                effects: {},
+                transform: {},
+                meta: {
+                    generatedBy: 'agentic-pipeline',
+                    kind: a.kind || 'image',
+                    query: a.query || '',
+                    provider: a.provider || '',
+                    license: a.license || '',
+                    aiReason: a.aiReason || '',
+                },
+            }));
+
+            const allClips = [...sourceClips, ...templateClips, ...assetClips]
+                .sort((a, b) => Number(a.startUs || 0) - Number(b.startUs || 0));
+
+            const finalDurationUs = Math.max(timelineCursor, durationUs,
+                ...allClips.map(c => Number(c.endUs || 0)));
+
+            const timeline = {
+                id: `timeline-${Date.now()}`,
+                projectId,
+                version: 1,
+                status: 'ENRICHED_TIMELINE_READY',
+                fps: fpsNum,
+                durationUs: finalDurationUs,
+                createdAt: now,
+                updatedAt: now,
+                tracks: [
+                    { id: 'track-video-main', name: 'Main Video', kind: 'video', order: 0, locked: false },
+                    { id: 'track-template-overlay', name: 'Template Overlay', kind: 'template', order: 1, locked: false },
+                    { id: 'track-broll', name: 'B-roll / Assets', kind: 'video', order: 2, locked: false },
+                    { id: 'track-captions', name: 'Captions', kind: 'caption', order: 3, locked: false },
+                ],
+                clips: allClips,
+            };
+
+            await writeJson(timelinePath, timeline);
+            console.error(`[Agent] Timeline assembled: ${sourceClips.length} source, ${templateClips.length} template, ${assetClips.length} asset clips`);
+
+            results.timelineAssembly = {
+                sourceClips: sourceClips.length,
+                templateClips: templateClips.length,
+                assetClips: assetClips.length,
+                totalClips: allClips.length,
+                durationUs: finalDurationUs,
+                cutsApplied: mergedRemove.length,
+            };
+        } catch (e) {
+            console.error(`[Agent] Timeline assembly failed: ${e.message}`);
+            results.timelineAssembly = { error: e.message };
+        }
+
+        await updateProgress('timeline_assembly', 'done', 'Timeline assembled with source clips, templates, and B-roll');
 
         // ── Final Summary ─────────────────────────────────────────────────────
         const summary = {

@@ -23,6 +23,7 @@ import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
 import { parallelMap } from './lib/metal_accel.mjs';
+import { getCustomPrompt } from './lib/custom_prompts.mjs';
 
 const execFile = promisify(execFileCb);
 
@@ -142,12 +143,24 @@ async function analyseChunkWithAI(chunk, allSegments, catalog, llmConfig, chunkT
     const contextText = buildContextWindow(allSegments, chunk.startUs, chunk.endUs);
     const durationSec = Math.round((chunk.endUs - chunk.startUs) / 1_000_000);
 
-    // Pick 6 most relevant templates to keep prompt small
-    const templateOptions = catalog.slice(0, 6).map(t => ({
-        id: t.id, name: t.name, category: t.category,
+    // Score templates by keyword overlap with chunk text for better matching
+    const chunkWords = new Set(chunk.text.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    const scored = catalog.map(t => {
+        const allKeywords = [...(t.tags || []), ...(t.name || '').toLowerCase().split(/\s+/), ...(t.category || '').split('-')];
+        const score = allKeywords.reduce((s, kw) => s + (chunkWords.has(kw.toLowerCase()) ? 1 : 0), 0);
+        return { ...t, _score: score };
+    });
+    scored.sort((a, b) => b._score - a._score);
+    // Send top 12 most relevant templates with tags for better LLM matching
+    const templateOptions = scored.slice(0, 12).map(t => ({
+        id: t.id, name: t.name, category: t.category, tags: (t.tags || []).slice(0, 5),
     }));
 
-    const prompt = `You are an expert video editor creating HIGH-RETENTION content for Indian YouTube audiences.
+    // Check for user-customized system prompt
+    const customSystemPrompt = await getCustomPrompt('high_retention_analysis');
+    const systemInstruction = customSystemPrompt || 'You are an expert video editor creating HIGH-RETENTION content for Indian YouTube audiences.';
+
+    const prompt = `${systemInstruction}
 
 CURRENT CHUNK (${durationSec}s, chunk ${chunk.index + 1}/${chunkTotal}):
 "${chunk.text}"
@@ -155,37 +168,49 @@ CURRENT CHUNK (${durationSec}s, chunk ${chunk.index + 1}/${chunkTotal}):
 SURROUNDING CONTEXT (±2 min):
 "${contextText.slice(0, 600)}"
 
-AVAILABLE TEMPLATES:
+AVAILABLE TEMPLATES (pick the BEST match by tags and content):
 ${JSON.stringify(templateOptions, null, 1)}
 
-TASK: Analyse this chunk and output a structured JSON edit plan with precise sub-chunk timing for each overlay element. Be aggressive with cuts — remove anything repeated or filler.
+TASK: Analyse this chunk and decide:
+1. Should it be CUT? (only if it is pure filler, repetition, or off-topic)
+2. Pick the BEST template from the list above — you MUST use one of the EXACT "id" values from AVAILABLE TEMPLATES
+3. Write a catchy headline and subline from the ACTUAL content discussed in this chunk
+4. Suggest a SPECIFIC, VISUAL stock image query that DIRECTLY relates to the topic in this chunk
+
+CRITICAL RULES:
+- templateId MUST be one of these exact values: ${templateOptions.map(t => t.id).join(', ')}
+- DO NOT invent template IDs — copy-paste from the list above
+- imageQuery must describe a REAL PHOTO that visually represents THIS specific topic
+  BAD examples: "business", "technology", "success" (too generic)
+  GOOD examples: "Indian rupee currency notes close up", "electric vehicle charging station India", "warehouse workers sorting packages"
+- imageQuery should be 4-8 words, in English, describing a concrete visual scene
+- Match the EXACT subject matter — if the chunk talks about Zomato, query for "food delivery app rider on motorcycle"
 
 TIMING RULES:
 - startOffsetSec is relative to the chunk start (0 = chunk begins)
 - durationSec is how long the element displays
 - No element should exceed the chunk duration (${durationSec}s)
-- Avoid overlapping template + image at the same time — stagger them
 - Template appears first (0-3s), then B-roll fills the rest
 
-Output ONLY raw JSON:
+Output ONLY raw JSON (no explanation, no markdown):
 {
   "cut": false,
   "cutReason": "repetition|filler|tangent|off-topic|null",
   "template": {
     "templateId": "${templateOptions[0]?.id || ''}",
-    "headline": "catchy 5-7 word Hindi/English headline from this chunk",
+    "headline": "catchy 5-7 word headline from this chunk content",
     "subline": "brief supporting stat or context (max 40 chars)",
     "startOffsetSec": 0,
     "durationSec": 3
   },
-  "imageQuery": "descriptive English query for stock photo matching this topic",
+  "imageQuery": "specific 4-8 word visual stock photo query for this topic",
   "imageTiming": { "startOffsetSec": 3, "durationSec": ${Math.max(2, durationSec - 3)} },
-  "videoQuery": "descriptive English query for B-roll video matching this topic",
-  "videoTiming": { "startOffsetSec": 0, "durationSec": ${durationSec} },
+  "videoQuery": null,
+  "videoTiming": null,
   "overlayText": "key stat or quote to show on screen (max 8 words)",
   "overlayTextTiming": { "startOffsetSec": 1, "durationSec": 3 },
-  "visualPriority": "template|image|video",
-  "transition": "cut|dissolve|slide"
+  "visualPriority": "template",
+  "transition": "cut"
 }`;
 
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -194,11 +219,21 @@ Output ONLY raw JSON:
             const result = extractJsonFromLLMOutput(response);
 
             // Validate and normalise (including sub-chunk timing)
-            const normTemplate = result.template ? {
-                ...result.template,
-                startOffsetSec: Number(result.template.startOffsetSec ?? 0),
-                durationSec: Math.min(Number(result.template.durationSec ?? 3), durationSec),
-            } : null;
+            let normTemplate = null;
+            if (result.template) {
+                // Verify templateId exists in the catalog — LLMs sometimes hallucinate IDs
+                const requestedId = result.template.templateId;
+                const validId = catalog.some(t => t.id === requestedId);
+                if (!validId && requestedId) {
+                    console.error(`[HR] Chunk ${chunk.index}: LLM returned unknown templateId "${requestedId}" — falling back to best match`);
+                    result.template.templateId = templateOptions[0]?.id || catalog[0]?.id || requestedId;
+                }
+                normTemplate = {
+                    ...result.template,
+                    startOffsetSec: Number(result.template.startOffsetSec ?? 0),
+                    durationSec: Math.min(Number(result.template.durationSec ?? 3), durationSec),
+                };
+            }
 
             return {
                 chunkIndex: chunk.index,
@@ -294,55 +329,81 @@ function enforceDensity(decisions, catalog) {
 
 // ── Template Catalog Discovery ────────────────────────────────────────────────
 
-async function discoverTemplateCatalog() {
-    const templateDirs = [
-        path.join(ROOT_DIR, 'public', 'templates'),
-        path.join(ROOT_DIR, 'src', 'assets', 'templates'),
-        path.join(ROOT_DIR, 'desktop', 'templates'),
-    ];
+async function listFilesRecursive(dir) {
+    const results = [];
+    try {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                results.push(...await listFilesRecursive(full));
+            } else {
+                results.push(full);
+            }
+        }
+    } catch { /* dir doesn't exist */ }
+    return results;
+}
 
+async function discoverTemplateCatalog() {
+    const templatesRoot = path.join(ROOT_DIR, 'src', 'templates');
     const catalog = [];
-    for (const dir of templateDirs) {
-        try {
-            const entries = await fs.readdir(dir, { withFileTypes: true });
-            for (const entry of entries) {
-                if (!entry.isDirectory()) continue;
-                const metaPath = path.join(dir, entry.name, 'meta.json');
-                try {
-                    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+
+    try {
+        const files = await listFilesRecursive(templatesRoot);
+        const tsxFiles = files.filter(f => f.endsWith('.tsx'));
+
+        for (const filePath of tsxFiles) {
+            try {
+                const source = await fs.readFile(filePath, 'utf8');
+                // Extract id, name, category, tags from registerTemplate({ ... })
+                const idMatch = source.match(/id:\s*['"]([^'"]+)['"]/);
+                const nameMatch = source.match(/name:\s*['"]([^'"]+)['"]/);
+                const categoryMatch = source.match(/category:\s*['"]([^'"]+)['"]/);
+                const tagsMatch = source.match(/tags:\s*\[([^\]]*)\]/);
+                const descMatch = source.match(/description:\s*['"]([^'"]+)['"]/);
+
+                if (idMatch) {
+                    const tags = tagsMatch
+                        ? tagsMatch[1].match(/['"]([^'"]+)['"]/g)?.map(t => t.replace(/['"]/g, '')) || []
+                        : [];
                     catalog.push({
-                        id: meta.id || entry.name,
-                        name: meta.name || entry.name,
-                        category: meta.category || 'general',
-                        path: path.join(dir, entry.name),
-                    });
-                } catch {
-                    catalog.push({
-                        id: entry.name,
-                        name: entry.name,
-                        category: 'general',
-                        path: path.join(dir, entry.name),
+                        id: idMatch[1],
+                        name: nameMatch?.[1] || idMatch[1],
+                        category: categoryMatch?.[1] || 'general',
+                        tags,
+                        description: descMatch?.[1] || '',
                     });
                 }
-            }
-        } catch { /* dir doesn't exist */ }
+            } catch { /* skip unreadable files */ }
+        }
+    } catch { /* templates dir doesn't exist */ }
+
+    if (catalog.length > 0) {
+        console.error(`[HR] Discovered ${catalog.length} templates from source files`);
+        return catalog;
     }
 
-    // Fallback built-in catalog if no templates found on disk
-    if (catalog.length === 0) {
-        return [
-            { id: 'breaking-news', name: 'Breaking Business News', category: 'news' },
-            { id: 'earnings-report', name: 'Earnings Report', category: 'finance' },
-            { id: 'ai-ml-update', name: 'AI / ML Update', category: 'tech' },
-            { id: 'money-rain', name: 'Money Rain Number Impact', category: 'finance' },
-            { id: 'ma-alert', name: 'M&A / Merger Alert', category: 'business' },
-            { id: 'quote-card', name: 'Quote Card', category: 'quote' },
-            { id: 'stat-reveal', name: 'Stat Reveal', category: 'stat' },
-            { id: 'key-point', name: 'Key Point', category: 'highlight' },
-        ];
-    }
-
-    return catalog;
+    // Fallback: curated list of REAL Remotion template IDs for news/business content
+    console.error('[HR] Template source scan failed — using built-in catalog');
+    return [
+        { id: 'biz-news-breaking-01', name: 'Breaking Business News', category: 'business-news', tags: ['breaking', 'alert', 'headline'] },
+        { id: 'biz-news-earnings-01', name: 'Earnings Report', category: 'business-news', tags: ['earnings', 'revenue', 'finance'] },
+        { id: 'biz-news-market-update-01', name: 'Market Update', category: 'business-news', tags: ['market', 'stocks', 'update'] },
+        { id: 'biz-news-policy-01', name: 'Policy Update', category: 'business-news', tags: ['policy', 'government', 'regulation'] },
+        { id: 'biz-news-merger-01', name: 'M&A / Merger Alert', category: 'business-news', tags: ['merger', 'acquisition', 'deal'] },
+        { id: 'tech-news-ai-update-01', name: 'AI / ML Update', category: 'tech-news', tags: ['ai', 'ml', 'technology'] },
+        { id: 'tech-news-funding-01', name: 'Funding Round', category: 'tech-news', tags: ['funding', 'startup', 'investment'] },
+        { id: 'headline-card-01', name: 'Headline Card', category: 'social-hooks', tags: ['headline', 'card', 'text'] },
+        { id: 'money-rain-01', name: 'Money Rain Number Impact', category: 'social-hooks', tags: ['money', 'revenue', 'number'] },
+        { id: 'data-viz-counter-01', name: 'Data Counter', category: 'data-visualization', tags: ['counter', 'number', 'stat'] },
+        { id: 'data-viz-bar-chart-01', name: 'Bar Chart', category: 'data-visualization', tags: ['chart', 'data', 'comparison'] },
+        { id: 'stamp-verdict-01', name: 'Stamp Verdict', category: 'social-hooks', tags: ['verdict', 'stamp', 'opinion'] },
+        { id: 'article-highlight-01', name: 'Article Highlight', category: 'social-hooks', tags: ['article', 'highlight', 'quote'] },
+        { id: 'proof-tiles-01', name: 'Proof Tiles', category: 'social-hooks', tags: ['proof', 'evidence', 'tiles'] },
+        { id: 'lower-thirds-01', name: 'Lower Third', category: 'lower-thirds', tags: ['lower-third', 'name', 'title'] },
+        { id: 'lower-thirds-topic-01', name: 'Topic Lower Third', category: 'lower-thirds', tags: ['topic', 'lower-third', 'label'] },
+    ];
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

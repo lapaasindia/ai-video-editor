@@ -157,7 +157,7 @@ async function main() {
   const ffmpegExists = await commandExists('ffmpeg');
 
   const mediaMeta = await probeMedia(absInput);
-  const projectDir = path.resolve('desktop', 'data', projectId);
+  const projectDir = readArg('--project-dir') || path.resolve('desktop', 'data', projectId);
   const mediaDir = path.join(projectDir, 'media');
   await fs.mkdir(mediaDir, { recursive: true });
 
