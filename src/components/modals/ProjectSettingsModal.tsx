@@ -33,7 +33,8 @@ const FALLBACK_PROVIDERS: Provider[] = [
     {
         id: 'openai', label: 'OpenAI', type: 'cloud', available: false,
         models: [
-            { id: 'gpt-4o', label: 'GPT-4o (Flagship)', default: true },
+            { id: 'gpt-5-mini', label: 'GPT-5 Mini (Cheap, recommended)', default: true },
+            { id: 'gpt-4o', label: 'GPT-4o (Flagship)' },
             { id: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast)' },
         ],
     },
@@ -189,6 +190,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({ onCl
                         <div className="form-group">
                             <label style={labelStyle}>Language</label>
                             <select value={language} onChange={e => setLanguage(e.target.value)} style={selectStyle}>
+                                <option value="auto">Auto-Detect</option>
                                 <option value="en">English</option>
                                 <option value="hi">Hindi</option>
                                 <option value="es">Spanish</option>

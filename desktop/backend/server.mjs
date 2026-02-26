@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import http from 'node:http';
+import os from 'node:os';
 import { execFile as execFileCb } from 'node:child_process';
 import fs from 'node:fs/promises';
 import { createWriteStream, existsSync } from 'node:fs';
@@ -260,25 +261,61 @@ async function updateProjectStatus(projectId, status) {
   return true;
 }
 
+async function loadTranscriptSegments(projId) {
+  try {
+    const pDir = await projectDir(projId);
+    const raw = JSON.parse(await fs.readFile(path.join(pDir, 'transcript.json'), 'utf8'));
+    return raw.transcript?.segments || raw.segments || [];
+  } catch { return []; }
+}
+
 function buildRoughCutTimeline({
   projectId,
   durationUs,
   fps,
   sourceRef,
   removeRanges,
+  transcriptSegments,
 }) {
   const normalized = normalizeRanges(removeRanges || [], durationUs);
   const keepRanges = invertRanges(normalized, durationUs);
   let cursor = 0;
 
+  // Build segment map: source↔timeline offset correspondence per kept range
+  const segmentMap = [];
+
   const clips = keepRanges.map((range, idx) => {
     const clipDuration = range.endUs - range.startUs;
+    const timelineStartUs = cursor;
+    const timelineEndUs = cursor + clipDuration;
+
+    // Find transcript segments that overlap this kept range
+    const overlapping = (transcriptSegments || []).filter(
+      seg => seg.startUs < range.endUs && seg.endUs > range.startUs
+    );
+    const wordCount = overlapping.reduce((n, seg) => n + (seg.words?.length || seg.text?.split(/\s+/).length || 0), 0);
+    const avgConfidence = overlapping.length > 0
+      ? Math.round((overlapping.reduce((s, seg) => s + (seg.confidence || 0.9), 0) / overlapping.length) * 100) / 100
+      : 0.9;
+
+    segmentMap.push({
+      clipIndex: idx,
+      sourceStartUs: range.startUs,
+      sourceEndUs: range.endUs,
+      timelineStartUs,
+      timelineEndUs,
+      offsetUs: timelineStartUs - range.startUs,
+      segmentCount: overlapping.length,
+      wordCount,
+      avgConfidence,
+    });
+
     const clip = {
       clipId: `clip-${idx + 1}`,
       trackId: 'track-video-main',
       clipType: 'source_clip',
-      startUs: cursor,
-      endUs: cursor + clipDuration,
+      startUs: timelineStartUs,
+      endUs: timelineEndUs,
       sourceStartUs: range.startUs,
       sourceEndUs: range.endUs,
       sourceRef: sourceRef || 'source-video',
@@ -286,12 +323,34 @@ function buildRoughCutTimeline({
       transform: {},
       meta: {
         generatedBy: 'ai-rough-cut',
-        removeRangesApplied: normalized,
+        segmentCount: overlapping.length,
+        wordCount,
+        avgConfidence,
+        durationSec: Math.round(clipDuration / 10_000) / 100,
       },
     };
     cursor += clipDuration;
     return clip;
   });
+
+  // Build cut gap markers on a dedicated track for visualization
+  const cutGapClips = normalized.map((range, idx) => ({
+    clipId: `cut-gap-${idx + 1}`,
+    trackId: 'track-rawcuts',
+    clipType: 'cut_marker',
+    startUs: range.startUs,
+    endUs: range.endUs,
+    sourceStartUs: range.startUs,
+    sourceEndUs: range.endUs,
+    sourceRef: 'cut',
+    effects: {},
+    transform: {},
+    meta: {
+      reason: range.reason || 'cut',
+      confidence: range.confidence || 0,
+      durationMs: Math.round((range.endUs - range.startUs) / 1000),
+    },
+  }));
 
   const now = new Date().toISOString();
   return {
@@ -301,21 +360,36 @@ function buildRoughCutTimeline({
     status: 'ROUGH_CUT_READY',
     fps,
     durationUs: cursor,
+    sourceDurationUs: durationUs,
+    totalCutDurationUs: durationUs - cursor,
     createdAt: now,
     updatedAt: now,
     tracks: [
       { id: 'track-video-main', name: 'Main Video', kind: 'video', order: 0, locked: false },
-      { id: 'track-captions', name: 'Captions', kind: 'caption', order: 1, locked: false },
+      { id: 'track-rawcuts', name: 'Raw Cuts', kind: 'marker', order: 1, locked: true },
+      { id: 'track-captions', name: 'Captions', kind: 'caption', order: 2, locked: false },
     ],
-    clips,
+    clips: [...clips, ...cutGapClips],
+    segmentMap,
   };
+}
+
+// Fix PATH for macOS GUI apps (Tauri) which don't inherit shell PATH
+if (process.platform === 'darwin') {
+  const extraPaths = ['/opt/homebrew/bin', '/usr/local/bin'];
+  const currentPaths = (process.env.PATH || '').split(':');
+  for (const p of extraPaths) {
+    if (!currentPaths.includes(p)) {
+      process.env.PATH = `${p}:${process.env.PATH}`;
+    }
+  }
 }
 
 async function runNodeScript(scriptPath, args = [], timeoutMs = 120000) {
   const { stdout } = await execFile('node', [scriptPath, ...args], {
     cwd: rootDir,
     timeout: timeoutMs,
-    maxBuffer: 1024 * 1024 * 8,
+    maxBuffer: 1024 * 1024 * 64,
     env: { ...process.env }, // Explicitly pass env so API keys set at runtime propagate
   });
   return (stdout ?? '').toString().trim();
@@ -392,6 +466,17 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 200, { ok: true, output });
       } catch (e) {
         sendJson(res, 500, { error: `Install failed: ${e.message || e}` });
+      }
+      return;
+    }
+
+    if (method === 'GET' && route === '/style-preferences') {
+      const prefsPath = path.join(os.homedir(), '.lapaas', 'style_preferences.json');
+      try {
+        const raw = await fs.readFile(prefsPath, 'utf8');
+        sendJson(res, 200, JSON.parse(raw));
+      } catch {
+        sendJson(res, 200, { version: 1, projectCount: 0, cutting: {}, chunks: {}, templates: {}, overlays: {}, transitions: {}, history: [] });
       }
       return;
     }
@@ -588,12 +673,14 @@ const server = http.createServer(async (req, res) => {
 
         // Also build the rough-cut timeline
         const fps = Number(body.fps || 30);
+        const transcriptSegments = await loadTranscriptSegments(projectId);
         const timeline = buildRoughCutTimeline({
           projectId,
           durationUs: Number(result.durationUs || 0),
           fps,
           sourceRef,
           removeRanges: Array.isArray(result.removeRanges) ? result.removeRanges : [],
+          transcriptSegments,
         });
         await writeTimeline(timeline);
         await updateProjectStatus(projectId, 'CUTS_READY');
@@ -733,12 +820,14 @@ const server = http.createServer(async (req, res) => {
       try {
         const raw = await runNodeScript(startEditingScript, args);
         const pipeline = JSON.parse(raw);
+        const transcriptSegments = await loadTranscriptSegments(projectId);
         const timeline = buildRoughCutTimeline({
           projectId,
           durationUs: Number(pipeline.durationUs || 0),
           fps,
           sourceRef,
           removeRanges: Array.isArray(pipeline.removeRanges) ? pipeline.removeRanges : [],
+          transcriptSegments,
         });
         await writeTimeline(timeline);
         await updateProjectStatus(projectId, 'ROUGH_CUT_READY');
@@ -836,7 +925,7 @@ const server = http.createServer(async (req, res) => {
           '--fetch-external', fetchExternal,
           ...(llmProvider ? ['--llm-provider', llmProvider] : []),
           ...(llmModel ? ['--llm-model', llmModel] : []),
-        ], 20 * 60 * 1000);
+        ], 60 * 60 * 1000);
         const result = JSON.parse(raw);
         await updateProjectStatus(projectId, 'AGENTIC_EDIT_DONE');
         sendJson(res, 200, result);
@@ -859,6 +948,47 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 200, { status: 'idle', percent: 0 });
       }
       return;
+    }
+
+    // ── Project Data Files (QC reports, etc.) ──────────────────────────────
+    const projectDataMatch = route.match(/^\/project-data\/([^/]+)\/([^/]+\.json)$/);
+    if (projectDataMatch) {
+      const projectId = projectDataMatch[1];
+      const fileName = projectDataMatch[2];
+      // Only allow .json files — prevent path traversal
+      if (fileName.includes('..') || fileName.includes('/')) {
+        sendJson(res, 400, { error: 'Invalid file name' });
+        return;
+      }
+      const filePath = path.join(rootDir, 'desktop', 'data', projectId, fileName);
+
+      if (method === 'GET') {
+        try {
+          const raw = await fs.readFile(filePath, 'utf8');
+          sendJson(res, 200, JSON.parse(raw));
+        } catch {
+          sendJson(res, 404, { error: 'Report not found' });
+        }
+        return;
+      }
+
+      if (method === 'POST') {
+        // Allow saving review decisions and other project JSON data
+        const WRITABLE_FILES = ['chunk_review_decisions.json'];
+        if (!WRITABLE_FILES.includes(fileName)) {
+          sendJson(res, 403, { error: `Writing to ${fileName} is not allowed` });
+          return;
+        }
+        try {
+          const body = await readBody(req);
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          await fs.writeFile(filePath, JSON.stringify(body, null, 2), 'utf8');
+          sendJson(res, 200, { ok: true });
+        } catch (e) {
+          sendJson(res, 500, { error: e.message });
+        }
+        return;
+      }
     }
 
     // ── AI Provider Catalog ───────────────────────────────────────────────
@@ -1437,14 +1567,12 @@ const server = http.createServer(async (req, res) => {
         
         sendJson(res, 200, parsed);
       } catch (error) {
-        const elapsed = Date.now() - startTime;
-        console.error(`[INGEST] Failed after ${elapsed}ms:`, error.message);
+        console.error(`[INGEST] Failed:`, error.message);
         console.error(`[INGEST] Stack:`, error.stack);
         console.error(`[INGEST] Input path:`, input);
         sendJson(res, 500, {
-          error: 'Media ingest failed',
-          details: error.message,
-          path: input
+          error: 'Internal server error',
+          message: error.message
         });
       }
       return;
@@ -1465,12 +1593,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      const transcriptSegments = await loadTranscriptSegments(projectId);
       const timeline = buildRoughCutTimeline({
         projectId,
         durationUs,
         fps,
         sourceRef,
         removeRanges,
+        transcriptSegments,
       });
 
       await writeTimeline(timeline);
@@ -1525,6 +1655,14 @@ try {
   }
   process.stderr.write(`[startup] Loaded ${Object.keys(cfg).length} saved API key(s)\n`);
 } catch { /* no saved config yet */ }
+
+// Auto-setup: install missing dependencies before starting
+try {
+  const { autoSetup } = await import(path.join(rootDir, 'scripts', 'auto_setup.mjs'));
+  await autoSetup({ silent: false });
+} catch (setupErr) {
+  process.stderr.write(`[startup] Auto-setup warning: ${setupErr.message}\n`);
+}
 
 server.listen(PORT, HOST, () => {
   process.stdout.write(`Lapaas desktop backend listening on http://${HOST}:${PORT}\n`);

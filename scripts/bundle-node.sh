@@ -37,7 +37,14 @@ case "$OS-$ARCH" in
 esac
 
 DEST="$BINARIES_DIR/node"
-echo "📦 Copying Node.js $(node --version) [$TRIPLE] → $DEST"
+DEST_TRIPLE="$BINARIES_DIR/node-$TRIPLE"
+
+echo "📦 Copying Node.js $(node --version) [$TRIPLE]"
 cp "$NODE_REAL" "$DEST"
 chmod +x "$DEST"
-echo "✅ Done ($(du -sh "$DEST" | cut -f1))"
+
+cp "$NODE_REAL" "$DEST_TRIPLE"
+chmod +x "$DEST_TRIPLE"
+
+echo "✅ Done: $DEST ($(du -sh "$DEST" | cut -f1))"
+echo "✅ Done: $DEST_TRIPLE ($(du -sh "$DEST_TRIPLE" | cut -f1))"

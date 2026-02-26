@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { getTemplateById } from '../../templates/registry';
+import { ReviewDashboard } from './ReviewDashboard';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ const ProgressBar: React.FC<{ percent: number; stage: string }> = ({ percent, st
 );
 
 const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ label, stageIcon = '⏳' }) => {
-    const { pipelineProgress, overlayChunkIndex, totalOverlayChunks, pipelineStage } = useEditor();
+    const { pipelineProgress, agenticProgress, overlayChunkIndex, totalOverlayChunks, pipelineStage } = useEditor();
     const [elapsed, setElapsed] = React.useState(0);
 
     React.useEffect(() => {
@@ -71,8 +72,9 @@ const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ labe
         return `${Math.floor(sec / 60)}m ${sec % 60}s`;
     };
 
-    const percent = pipelineProgress?.percent ?? 0;
-    const message = pipelineProgress?.message ?? label;
+    // Use agenticProgress if available, otherwise fallback to legacy pipelineProgress
+    const percent = agenticProgress?.percent ?? pipelineProgress?.percent ?? 0;
+    const message = agenticProgress?.detail || agenticProgress?.currentStep || pipelineProgress?.message || label;
     const isOverlay = pipelineStage === 'overlaying_chunk';
 
     return (
@@ -84,6 +86,11 @@ const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ labe
                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
                         {stageIcon} {message}
                     </div>
+                    {agenticProgress?.llmProvider && (
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 6 }}>
+                            <span style={{ color: '#4ec9b0' }}>LLM: {agenticProgress.llmProvider}/{agenticProgress.llmModel}</span>
+                        </div>
+                    )}
                     <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
                         Elapsed: {formatElapsed(elapsed)}
                     </div>
@@ -101,7 +108,7 @@ const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ labe
                     height: '100%',
                     width: `${Math.min(100, Math.max(2, percent))}%`,
                     borderRadius: 3,
-                    background: isOverlay
+                    background: isOverlay || agenticProgress
                         ? 'linear-gradient(90deg, #7c3aed, #a855f7)'
                         : 'linear-gradient(90deg, var(--accent-primary, #4a9eff), #7c3aed)',
                     transition: 'width 0.5s ease',
@@ -111,7 +118,10 @@ const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ labe
             {/* Percentage */}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
                 <span>{Math.round(percent)}%</span>
-                {isOverlay && totalOverlayChunks > 0 && (
+                {agenticProgress && agenticProgress.currentStep && (
+                    <span style={{ textTransform: 'capitalize' }}>{agenticProgress.currentStep.replace(/_/g, ' ')}</span>
+                )}
+                {!agenticProgress && isOverlay && totalOverlayChunks > 0 && (
                     <span>Chunk {overlayChunkIndex + 1} / {totalOverlayChunks}</span>
                 )}
             </div>
@@ -124,9 +134,11 @@ const StageProcessing: React.FC<{ label: string; stageIcon?: string }> = ({ labe
                 opacity: 0.7,
                 lineHeight: 1.4,
             }}>
-                {isOverlay
-                    ? 'AI is analyzing each transcript section and selecting relevant assets…'
-                    : 'This may take a few minutes depending on video length.'}
+                {agenticProgress
+                    ? 'AI is analyzing your video and generating edits…'
+                    : isOverlay
+                        ? 'AI is analyzing each transcript section and selecting relevant assets…'
+                        : 'This may take a few minutes depending on video length.'}
             </div>
         </div>
     );
@@ -182,15 +194,60 @@ const StageIdle: React.FC = () => {
 
 // ── Step 1 → 2: User reviews transcript ──────────────────────────────────────
 
+const SPEAKER_COLORS = ['#3498db', '#e74c3c', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c', '#e67e22', '#8e44ad'];
+
+const RISK_COLORS: Record<string, { bg: string; border: string; text: string; badge: string }> = {
+    high: { bg: 'rgba(231,76,60,0.10)', border: 'rgba(231,76,60,0.35)', text: '#e74c3c', badge: '#e74c3c' },
+    medium: { bg: 'rgba(243,156,18,0.10)', border: 'rgba(243,156,18,0.30)', text: '#f39c12', badge: '#f39c12' },
+    low: { bg: 'rgba(241,196,15,0.06)', border: 'rgba(241,196,15,0.20)', text: '#f1c40f', badge: '#f1c40f' },
+    none: { bg: 'transparent', border: 'transparent', text: 'var(--text-primary)', badge: 'transparent' },
+};
+
 const StageTranscriptReady: React.FC = () => {
-    const { transcript, approveTranscript, seekTo, currentTime, resetPipeline } = useEditor();
+    const { transcript, approveTranscript, seekTo, currentTime, resetPipeline, updateTranscriptSegment } = useEditor();
     const [expanded, setExpanded] = useState(true);
+    const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
+    const [editingSegId, setEditingSegId] = useState<string | null>(null);
+    const [editText, setEditText] = useState('');
+    const [speakerFilter, setSpeakerFilter] = useState<number | null>(null);
 
     const activeSegIndex = useMemo(() => {
         if (!transcript) return -1;
         const timeUs = currentTime * 1_000_000;
         return transcript.findIndex(seg => timeUs >= seg.startUs && timeUs <= seg.endUs);
     }, [transcript, currentTime]);
+
+    const hasAnnotations = useMemo(() =>
+        transcript?.some(s => s.annotation && s.annotation.flagCount > 0) ?? false,
+    [transcript]);
+
+    const speakerList = useMemo(() => {
+        if (!transcript) return [];
+        const seen = new Map<number, string>();
+        for (const seg of transcript) {
+            if (seg.speaker != null && seg.speakerIndex != null && !seen.has(seg.speakerIndex)) {
+                seen.set(seg.speakerIndex, seg.speaker);
+            }
+        }
+        return Array.from(seen.entries()).sort((a, b) => a[0] - b[0]);
+    }, [transcript]);
+
+    const reliabilityStats = useMemo(() => {
+        if (!transcript) return null;
+        const total = transcript.length;
+        const flagged = transcript.filter(s => s.annotation && s.annotation.flagCount > 0).length;
+        const highRisk = transcript.filter(s => s.annotation?.riskLevel === 'high').length;
+        const medRisk = transcript.filter(s => s.annotation?.riskLevel === 'medium').length;
+        return { total, flagged, highRisk, medRisk };
+    }, [transcript]);
+
+    const displaySegments = useMemo(() => {
+        if (!transcript) return [];
+        let segs = transcript;
+        if (showFlaggedOnly) segs = segs.filter(s => s.annotation && s.annotation.flagCount > 0);
+        if (speakerFilter !== null) segs = segs.filter(s => s.speakerIndex === speakerFilter);
+        return segs;
+    }, [transcript, showFlaggedOnly, speakerFilter]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -208,17 +265,80 @@ const StageTranscriptReady: React.FC = () => {
                 </div>
             </div>
 
-            <button
-                className="btn-secondary btn-sm"
-                onClick={() => setExpanded(v => !v)}
-                style={{ textAlign: 'left' }}
-            >
-                {expanded ? '▾' : '▸'} Transcript ({transcript?.length || 0} segments)
-            </button>
+            {hasAnnotations && reliabilityStats && (
+                <div style={{
+                    background: reliabilityStats.highRisk > 0 ? 'rgba(231,76,60,0.06)' : 'rgba(52,152,219,0.06)',
+                    border: `1px solid ${reliabilityStats.highRisk > 0 ? 'rgba(231,76,60,0.20)' : 'rgba(52,152,219,0.20)'}`,
+                    borderRadius: 6,
+                    padding: '8px 10px',
+                    fontSize: 11,
+                }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                        📊 Transcript Quality
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, color: 'var(--text-muted)' }}>
+                        <span>{reliabilityStats.flagged}/{reliabilityStats.total} flagged</span>
+                        {reliabilityStats.highRisk > 0 && (
+                            <span style={{ color: '#e74c3c' }}>🔴 {reliabilityStats.highRisk} high-risk</span>
+                        )}
+                        {reliabilityStats.medRisk > 0 && (
+                            <span style={{ color: '#f39c12' }}>🟡 {reliabilityStats.medRisk} medium</span>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button
+                    className="btn-secondary btn-sm"
+                    onClick={() => setExpanded(v => !v)}
+                    style={{ textAlign: 'left', flex: 1 }}
+                >
+                    {expanded ? '▾' : '▸'} Transcript ({transcript?.length || 0} segments)
+                </button>
+                {hasAnnotations && (
+                    <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => setShowFlaggedOnly(v => !v)}
+                        style={{ fontSize: 10, whiteSpace: 'nowrap', opacity: showFlaggedOnly ? 1 : 0.6 }}
+                    >
+                        ⚠ {showFlaggedOnly ? 'Show All' : 'Flagged Only'}
+                    </button>
+                )}
+            </div>
+
+            {speakerList.length > 1 && (
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>Speaker:</span>
+                    <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => setSpeakerFilter(null)}
+                        style={{
+                            fontSize: 9, padding: '1px 6px',
+                            opacity: speakerFilter === null ? 1 : 0.5,
+                            border: speakerFilter === null ? '1px solid var(--accent-primary)' : undefined,
+                        }}
+                    >All</button>
+                    {speakerList.map(([idx, _name]) => (
+                        <button
+                            key={idx}
+                            className="btn-secondary btn-sm"
+                            onClick={() => setSpeakerFilter(speakerFilter === idx ? null : idx)}
+                            style={{
+                                fontSize: 9, padding: '1px 6px',
+                                background: SPEAKER_COLORS[idx % SPEAKER_COLORS.length] + (speakerFilter === idx ? '33' : '11'),
+                                color: SPEAKER_COLORS[idx % SPEAKER_COLORS.length],
+                                border: speakerFilter === idx ? `1px solid ${SPEAKER_COLORS[idx % SPEAKER_COLORS.length]}` : undefined,
+                                fontWeight: speakerFilter === idx ? 700 : 400,
+                            }}
+                        >S{idx + 1}</button>
+                    ))}
+                </div>
+            )}
 
             {expanded && transcript && (
                 <div style={{
-                    maxHeight: 280,
+                    maxHeight: 320,
                     overflowY: 'auto',
                     border: '1px solid var(--panel-border)',
                     borderRadius: 6,
@@ -227,26 +347,119 @@ const StageTranscriptReady: React.FC = () => {
                     flexDirection: 'column',
                     gap: 4,
                 }}>
-                    {transcript.map((seg, i) => (
-                        <div
-                            key={seg.id}
-                            onClick={() => seekTo(seg.startUs / 1_000_000)}
-                            style={{
-                                fontSize: 11,
-                                cursor: 'pointer',
-                                padding: '4px 6px',
-                                borderRadius: 4,
-                                background: i === activeSegIndex ? 'rgba(74,158,255,0.15)' : 'transparent',
-                                border: i === activeSegIndex ? '1px solid rgba(74,158,255,0.3)' : '1px solid transparent',
-                                transition: 'background 0.15s',
-                            }}
-                        >
-                            <span style={{ color: 'var(--accent-primary)', fontFamily: 'monospace', marginRight: 6, fontSize: 10 }}>
-                                {formatUs(seg.startUs)}
-                            </span>
-                            <span style={{ color: 'var(--text-primary)' }}>{seg.text}</span>
-                        </div>
-                    ))}
+                    {displaySegments.map((seg, _i) => {
+                        const risk = seg.annotation?.riskLevel || 'none';
+                        const riskStyle = RISK_COLORS[risk] || RISK_COLORS.none;
+                        const isActive = transcript.indexOf(seg) === activeSegIndex;
+                        const flags = seg.annotation?.flags || [];
+
+                        return (
+                            <div
+                                key={seg.id}
+                                onClick={() => seekTo(seg.startUs / 1_000_000)}
+                                title={flags.length > 0 ? flags.map(f => f.message).join('\n') : undefined}
+                                style={{
+                                    fontSize: 11,
+                                    cursor: 'pointer',
+                                    padding: '5px 6px',
+                                    borderRadius: 4,
+                                    background: isActive ? 'rgba(74,158,255,0.15)' : riskStyle.bg,
+                                    border: isActive
+                                        ? '1px solid rgba(74,158,255,0.3)'
+                                        : risk !== 'none'
+                                            ? `1px solid ${riskStyle.border}`
+                                            : '1px solid transparent',
+                                    transition: 'background 0.15s',
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span style={{ color: 'var(--accent-primary)', fontFamily: 'monospace', fontSize: 10, flexShrink: 0 }}>
+                                        {formatUs(seg.startUs)}
+                                    </span>
+                                    {seg.speaker && (
+                                        <span style={{
+                                            fontSize: 8,
+                                            padding: '1px 4px',
+                                            borderRadius: 3,
+                                            background: SPEAKER_COLORS[(seg.speakerIndex ?? 0) % SPEAKER_COLORS.length] + '22',
+                                            color: SPEAKER_COLORS[(seg.speakerIndex ?? 0) % SPEAKER_COLORS.length],
+                                            fontWeight: 700,
+                                            flexShrink: 0,
+                                            border: `1px solid ${SPEAKER_COLORS[(seg.speakerIndex ?? 0) % SPEAKER_COLORS.length]}44`,
+                                        }}>
+                                            S{(seg.speakerIndex ?? 0) + 1}
+                                        </span>
+                                    )}
+                                    {risk !== 'none' && (
+                                        <span style={{
+                                            fontSize: 8,
+                                            padding: '1px 4px',
+                                            borderRadius: 3,
+                                            background: riskStyle.badge,
+                                            color: '#fff',
+                                            fontWeight: 700,
+                                            textTransform: 'uppercase',
+                                            flexShrink: 0,
+                                        }}>
+                                            {risk}
+                                        </span>
+                                    )}
+                                    {editingSegId === seg.id ? (
+                                        <input
+                                            autoFocus
+                                            value={editText}
+                                            onChange={e => setEditText(e.target.value)}
+                                            onBlur={() => {
+                                                if (editText.trim() && editText !== seg.text) {
+                                                    updateTranscriptSegment(seg.id, editText.trim());
+                                                }
+                                                setEditingSegId(null);
+                                            }}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); }
+                                                if (e.key === 'Escape') { setEditingSegId(null); }
+                                            }}
+                                            onClick={e => e.stopPropagation()}
+                                            style={{
+                                                flex: 1, fontSize: 11, color: 'var(--text-primary)',
+                                                background: 'rgba(74,158,255,0.10)', border: '1px solid rgba(74,158,255,0.4)',
+                                                borderRadius: 3, padding: '1px 4px', outline: 'none',
+                                                fontFamily: 'inherit',
+                                            }}
+                                        />
+                                    ) : (
+                                        <span
+                                            style={{ color: riskStyle.text, flex: 1, cursor: 'text' }}
+                                            onDoubleClick={e => {
+                                                e.stopPropagation();
+                                                setEditingSegId(seg.id);
+                                                setEditText(seg.text);
+                                            }}
+                                            title="Double-click to edit"
+                                        >{seg.text}</span>
+                                    )}
+                                    {seg.confidence < 0.7 && (
+                                        <span style={{ fontSize: 9, color: '#e74c3c', flexShrink: 0 }}>
+                                            {Math.round(seg.confidence * 100)}%
+                                        </span>
+                                    )}
+                                </div>
+                                {flags.length > 0 && (
+                                    <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
+                                        {flags.map((f, fi) => (
+                                            <span key={fi} style={{
+                                                fontSize: 9,
+                                                color: RISK_COLORS[f.severity]?.text || 'var(--text-muted)',
+                                                opacity: 0.8,
+                                            }}>
+                                                {f.type.replace(/_/g, ' ')}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
@@ -1160,19 +1373,19 @@ const ClipProperties: React.FC = () => {
         );
     }
 
-    // Find the selected clip
+    // Find the selected clip and its parent track
     let selectedClip: any = null;
-    let trackName = '';
+    let parentTrack: any = null;
     for (const track of tracks) {
         const clip = track.clips.find(c => c.id === selectedClipId);
         if (clip) {
             selectedClip = clip;
-            trackName = track.name;
+            parentTrack = track;
             break;
         }
     }
 
-    if (!selectedClip) {
+    if (!selectedClip || !parentTrack) {
         return (
             <div className="empty-state-small">
                 <p>Select a clip to edit properties</p>
@@ -1181,11 +1394,30 @@ const ClipProperties: React.FC = () => {
     }
 
     const fps = currentProject?.fps || 30;
+    const trackId = parentTrack.id as string;
+
+    // Determine AI track badge
+    const AI_BADGE: Record<string, { label: string; color: string }> = {
+        'track-cuts-ai': { label: 'AI Cut', color: '#e74c3c' },
+        'track-rawcuts': { label: 'Detected Cut', color: '#e74c3c' },
+        'track-seams-ai': { label: 'Seam Warning', color: '#e67e22' },
+        'track-chunks-ai': { label: 'Semantic Chunk', color: '#1abc9c' },
+        'track-text-ai': { label: 'Text Overlay', color: '#f1c40f' },
+        'track-overlay-ai': { label: 'AI Template', color: '#9b59b6' },
+        'track-broll-ai': { label: 'B-Roll', color: '#3498db' },
+    };
+    const badge = AI_BADGE[trackId];
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 Clip Inspector
+                {badge && (
+                    <span style={{
+                        fontSize: 9, padding: '1px 6px', borderRadius: 3,
+                        background: `${badge.color}22`, color: badge.color, border: `1px solid ${badge.color}44`,
+                    }}>{badge.label}</span>
+                )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '6px 8px', fontSize: 11 }}>
@@ -1193,7 +1425,7 @@ const ClipProperties: React.FC = () => {
                 <span style={{ color: 'var(--text-primary)', wordBreak: 'break-all' }}>{selectedClip.name || 'Unnamed'}</span>
 
                 <span style={{ color: 'var(--text-muted)' }}>Track</span>
-                <span style={{ color: 'var(--text-primary)' }}>{trackName}</span>
+                <span style={{ color: 'var(--text-primary)' }}>{parentTrack.name}</span>
 
                 <span style={{ color: 'var(--text-muted)' }}>Start</span>
                 <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>
@@ -1217,7 +1449,35 @@ const ClipProperties: React.FC = () => {
 
                 <span style={{ color: 'var(--text-muted)' }}>Type</span>
                 <span style={{ color: 'var(--text-primary)' }}>{selectedClip.type}</span>
+
+                {parentTrack.isLocked && <>
+                    <span style={{ color: 'var(--text-muted)' }}>Status</span>
+                    <span style={{ color: '#e67e22', fontSize: 10 }}>🔒 Locked (read-only)</span>
+                </>}
             </div>
+
+            {/* AI-specific content for text overlay clips */}
+            {trackId === 'track-text-ai' && selectedClip.name && (
+                <div style={{ marginTop: 6, padding: 8, borderRadius: 4, background: 'rgba(241,196,15,0.08)', border: '1px solid rgba(241,196,15,0.15)', fontSize: 11 }}>
+                    <div style={{ fontWeight: 600, color: '#f1c40f', marginBottom: 4 }}>Overlay Text</div>
+                    <div style={{ color: 'var(--text-primary)' }}>{selectedClip.name}</div>
+                </div>
+            )}
+
+            {/* AI-specific content for B-roll clips */}
+            {trackId === 'track-broll-ai' && (selectedClip as any).assetData && (
+                <div style={{ marginTop: 6, padding: 8, borderRadius: 4, background: 'rgba(52,152,219,0.08)', border: '1px solid rgba(52,152,219,0.15)', fontSize: 11 }}>
+                    <div style={{ fontWeight: 600, color: '#3498db', marginBottom: 4 }}>Asset Details</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '50px 1fr', gap: '3px 6px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Kind</span>
+                        <span>{(selectedClip as any).assetData.kind}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>Query</span>
+                        <span>{(selectedClip as any).assetData.query}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>Source</span>
+                        <span>{(selectedClip as any).assetData.provider}</span>
+                    </div>
+                </div>
+            )}
 
             {selectedClip.type === 'template' && (
                 <TemplateProperties clip={selectedClip} />
@@ -1306,6 +1566,12 @@ export const PropertiesPanel: React.FC = () => {
                     >
                         {aiTabLabel()}
                     </button>
+                    <button
+                        className={`panel-tab ${activeTab === 'review' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('review')}
+                    >
+                        Review
+                    </button>
                 </div>
             </div>
 
@@ -1319,6 +1585,12 @@ export const PropertiesPanel: React.FC = () => {
                 {activeTab === 'ai' && (
                     <div className="tab-content active" style={{ padding: '12px' }}>
                         {renderAIContent()}
+                    </div>
+                )}
+
+                {activeTab === 'review' && (
+                    <div className="tab-content active" style={{ padding: '12px' }}>
+                        <ReviewDashboard />
                     </div>
                 )}
             </div>

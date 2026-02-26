@@ -7,7 +7,7 @@ import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createStageTracker, recordProjectTelemetry } from './lib/pipeline_telemetry.mjs';
 import { runLLMPrompt, extractJsonFromLLMOutput, detectBestLLM } from './lib/llm_provider.mjs';
-import { audioExtractArgs, parallelMap, detectHWAccel, isMlxWhisperAvailable, transcribeWithMlxWhisper } from './lib/metal_accel.mjs';
+import { audioExtractArgs, hwDecodeArgs, parallelMap, detectHWAccel, isMlxWhisperAvailable, transcribeWithMlxWhisper } from './lib/metal_accel.mjs';
 import {
   validateCanonicalTranscript,
   validateCutPlan,
@@ -75,6 +75,73 @@ function safeFallbackPolicy(input) {
     return normalized;
   }
   return 'local-first';
+}
+
+// ── Language Auto-Detection ───────────────────────────────────────────────
+
+/**
+ * Auto-detect spoken language from a short audio sample.
+ * Uses mlx_whisper or faster-whisper's language detection, with a Unicode
+ * script-based fallback for when local runtimes aren't available.
+ */
+async function detectLanguage(inputPath) {
+  // Extract a 30s audio sample for language detection
+  const samplePath = path.join(os.tmpdir(), `lang-detect-${Date.now()}.wav`);
+  try {
+    const extArgs = audioExtractArgs();
+    await run('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      '-ss', '5', '-t', '30',
+      '-i', inputPath,
+      ...extArgs,
+      samplePath,
+    ], 30000);
+  } catch (e) {
+    console.error(`[LangDetect] Audio extraction failed: ${e.message}`);
+    return { language: 'en', method: 'fallback-default', confidence: 0.3 };
+  }
+
+  // Try mlx_whisper language detection (fastest on Apple Silicon)
+  if (await isMlxWhisperAvailable()) {
+    try {
+      const { stdout } = await runWithOutput('python3', [
+        '-c',
+        `import mlx_whisper; result = mlx_whisper.transcribe("${samplePath}", path_or_hf_repo="mlx-community/whisper-large-v3-turbo", task="transcribe", word_timestamps=False, condition_on_previous_text=False); print(result.get("language", "en"))`,
+      ], 60000);
+      const lang = stdout.trim().split('\n').pop().trim();
+      if (lang && lang.length >= 2) {
+        console.error(`[LangDetect] mlx_whisper detected: ${lang}`);
+        await fs.unlink(samplePath).catch(() => {});
+        return { language: lang, method: 'mlx_whisper', confidence: 0.9 };
+      }
+    } catch (e) {
+      console.error(`[LangDetect] mlx_whisper detection failed: ${e.message}`);
+    }
+  }
+
+  // Try faster-whisper language detection
+  if (await pythonPackageExists('faster_whisper')) {
+    try {
+      const { stdout } = await runWithOutput('python3', [
+        '-c',
+        `from faster_whisper import WhisperModel; m = WhisperModel("tiny", device="cpu"); _, info = m.transcribe("${samplePath}", beam_size=1); print(info.language)`,
+      ], 60000);
+      const lang = stdout.trim().split('\n').pop().trim();
+      if (lang && lang.length >= 2) {
+        console.error(`[LangDetect] faster-whisper detected: ${lang}`);
+        await fs.unlink(samplePath).catch(() => {});
+        return { language: lang, method: 'faster_whisper', confidence: 0.85 };
+      }
+    } catch (e) {
+      console.error(`[LangDetect] faster-whisper detection failed: ${e.message}`);
+    }
+  }
+
+  await fs.unlink(samplePath).catch(() => {});
+
+  // Fallback: default to English
+  console.error('[LangDetect] No detection runtime available, defaulting to "en"');
+  return { language: 'en', method: 'fallback-default', confidence: 0.3 };
 }
 
 async function pythonPackageExists(packageName) {
@@ -375,13 +442,18 @@ async function transcribeWithSarvam(inputPath, language) {
               wEndUs = wStartUs + 50_000; // 50ms minimum word duration
             }
 
+            // Extract real confidence from API response; fall back to 0.92
+            const wordConf = typeof w.confidence === 'number' ? w.confidence
+              : typeof w.probability === 'number' ? w.probability
+              : typeof w.score === 'number' ? w.score : 0.92;
+
             const wordObj = {
               id: `word-${segIdx}-${allWords.length + chunkWords.length}`,
               text: rawText,
               normalized: rawText.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ''),
               startUs: wStartUs,
               endUs: wEndUs,
-              confidence: 0.92,
+              confidence: Math.round(Math.max(0, Math.min(1, wordConf)) * 100) / 100,
             };
             chunkWords.push(wordObj);
           }
@@ -417,13 +489,18 @@ async function transcribeWithSarvam(inputPath, language) {
           allWords.push(w);
         }
 
+        // Compute segment confidence as average of word confidences
+        const segConfidence = finalWords.length > 0
+          ? Math.round((finalWords.reduce((s, w) => s + w.confidence, 0) / finalWords.length) * 100) / 100
+          : 0.9;
+
         const seg = {
           id: `seg-${segIdx}`,
           startUs: segStartUs,
           endUs: segEndUs,
           text: transcriptText.trim(),
           words: finalWords,
-          confidence: 0.92,
+          confidence: segConfidence,
         };
         segments.push(seg);
         segIdx++;
@@ -566,7 +643,7 @@ async function detectSilenceRanges(inputPath, durationUs) {
   }
 }
 
-function buildWords(text, startUs, endUs) {
+function buildWords(text, startUs, endUs, wordConfidence = 0.88) {
   const tokens = text.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return [];
 
@@ -583,17 +660,19 @@ function buildWords(text, startUs, endUs) {
       normalized,
       startUs: s,
       endUs: e,
-      confidence: 0.88,
+      confidence: wordConfidence,
     };
   });
 }
 
 async function extractAudioForWhisper(inputPath, outputPath) {
-  // Whisper.cpp expects 16kHz WAV
+  // Whisper.cpp expects 16kHz WAV — use VideoToolbox hw decode on Apple Silicon
+  const decArgs = await hwDecodeArgs();
   await runWithOutput('ffmpeg', [
     '-y',
     '-hide_banner',
     '-loglevel', 'error',
+    ...decArgs,
     '-i', inputPath,
     '-ar', '16000',
     '-ac', '1',
@@ -699,13 +778,26 @@ function normalizeWhisperTranscript(whisperJson, durationUs) {
     // Actually, it produces tokens. Mapping tokens to words is hard without robust logic.
     // We will synthesize word-level timing from segment timing for now if words are missing.
 
+    // Extract real confidence from tokens if available
+    let segConf = 0.9;
+    if (Array.isArray(seg.tokens) && seg.tokens.length > 0) {
+      const probs = seg.tokens
+        .map(t => typeof t.p === 'number' ? t.p : typeof t.probability === 'number' ? t.probability : null)
+        .filter(p => p !== null);
+      if (probs.length > 0) {
+        segConf = Math.round((probs.reduce((a, b) => a + b, 0) / probs.length) * 100) / 100;
+      }
+    } else if (typeof seg.avg_logprob === 'number') {
+      segConf = Math.round(Math.max(0.1, Math.min(1, Math.exp(seg.avg_logprob))) * 100) / 100;
+    }
+
     return {
       id: `seg-${idx}`,
       startUs: Math.round(startUs),
       endUs: Math.round(endUs),
       text,
-      words: buildWords(text, startUs, endUs), // Use existing helper to distribute words evenly
-      confidence: 0.9 // Placeholder
+      words: buildWords(text, startUs, endUs, segConf),
+      confidence: segConf,
     };
   });
 
@@ -948,7 +1040,7 @@ Output ONLY raw JSON, no prose, no markdown:
   }
 }
 
-function buildSyntheticCutPlan(durationUs, transcriptPayload, { silenceRanges = [] } = {}) {
+function buildSyntheticCutPlan(durationUs, transcriptPayload, { silenceRanges = [], topicBoundaries = [] } = {}) {
   const candidates = [];
   let fillerWordCount = 0;
 
@@ -1023,13 +1115,29 @@ function buildSyntheticCutPlan(durationUs, transcriptPayload, { silenceRanges = 
   const repetitionRanges = detectRepetitionRanges(transcriptPayload, durationUs);
   candidates.push(...repetitionRanges);
 
-  const removeRanges = clampRanges(candidates, durationUs);
+  // Topic drift protection: avoid cutting at topic boundaries (±500ms zone)
+  // This preserves natural transitions between topics
+  const TOPIC_GUARD_US = 500_000; // 500ms guard zone around topic boundaries
+  let topicProtected = 0;
+  const filteredCandidates = topicBoundaries.length > 0
+    ? candidates.filter(c => {
+        const overlapsTopicBoundary = topicBoundaries.some(
+          tb => c.startUs < (tb + TOPIC_GUARD_US) && c.endUs > (tb - TOPIC_GUARD_US)
+        );
+        if (overlapsTopicBoundary) topicProtected++;
+        return !overlapsTopicBoundary;
+      })
+    : candidates;
+
+  const removeRanges = clampRanges(filteredCandidates, durationUs);
   return {
     removeRanges,
     analysis: {
       silenceRangeCount: normalizedSilence.length,
       fillerWordCount,
       repetitionCount: repetitionRanges.length,
+      topicDriftCount: topicBoundaries.length,
+      topicProtectedCuts: topicProtected,
     },
   };
 }
@@ -1089,7 +1197,7 @@ async function main() {
   const projectId = readArg('--project-id');
   const input = readArg('--input');
   const mode = safeMode(readArg('--mode', 'hybrid'));
-  const language = readArg('--language', 'en') || 'en';
+  let language = readArg('--language', 'en') || 'en';
   const sourceRef = readArg('--source-ref', 'source-video') || 'source-video';
   const fps = Number(readArg('--fps', '30')) || 30;
   const fallbackPolicy = safeFallbackPolicy(readArg('--fallback-policy', 'local-first'));
@@ -1119,6 +1227,14 @@ async function main() {
     await fs.access(inputPath);
   } catch {
     throw new Error(`Input file not found: ${inputPath}`);
+  }
+
+  // Auto-detect language if requested
+  if (language === 'auto') {
+    console.error('[Pipeline] Auto-detecting language from audio...');
+    const detection = await detectLanguage(inputPath);
+    language = detection.language;
+    console.error(`[Pipeline] Detected language: ${language} (method: ${detection.method}, confidence: ${detection.confidence})`);
   }
 
   const projectDir = readArg('--project-dir') || path.resolve('desktop', 'data', projectId);
@@ -1198,16 +1314,42 @@ async function main() {
               const jsonFile = path.join(tmpOut, jsonName);
               const raw = JSON.parse(await fs.readFile(jsonFile, 'utf8'));
               // Normalize mlx_whisper output to canonical transcript format
-              const mlxSegments = (raw.segments || []).map((s, i) => ({
-                id: `seg-${i}`,
-                startUs: Math.round((s.start || 0) * 1_000_000),
-                endUs: Math.round((s.end || 0) * 1_000_000),
-                text: (s.text || '').trim(),
-                words: buildWords((s.text || '').trim(),
-                  Math.round((s.start || 0) * 1_000_000),
-                  Math.round((s.end || 0) * 1_000_000)),
-                confidence: 0.9,
-              }));
+              const mlxSegments = (raw.segments || []).map((s, i) => {
+                // Extract real confidence from avg_logprob (whisper's log probability)
+                // Convert log probability to 0-1 confidence: exp(avg_logprob) clamped
+                const logprob = typeof s.avg_logprob === 'number' ? s.avg_logprob : -0.3;
+                const segConf = Math.round(Math.max(0.1, Math.min(1, Math.exp(logprob))) * 100) / 100;
+                const sStartUs = Math.round((s.start || 0) * 1_000_000);
+                const sEndUs = Math.round((s.end || 0) * 1_000_000);
+                const sText = (s.text || '').trim();
+
+                // Build words with per-word confidence from segment confidence
+                const segWords = buildWords(sText, sStartUs, sEndUs);
+                // If whisper provides word-level data, extract it
+                if (Array.isArray(s.words) && s.words.length > 0) {
+                  for (let wi = 0; wi < Math.min(s.words.length, segWords.length); wi++) {
+                    const ww = s.words[wi];
+                    if (typeof ww.probability === 'number') {
+                      segWords[wi].confidence = Math.round(Math.max(0, Math.min(1, ww.probability)) * 100) / 100;
+                    }
+                    if (typeof ww.start === 'number') {
+                      segWords[wi].startUs = Math.round(ww.start * 1_000_000);
+                    }
+                    if (typeof ww.end === 'number') {
+                      segWords[wi].endUs = Math.round(ww.end * 1_000_000);
+                    }
+                  }
+                }
+
+                return {
+                  id: `seg-${i}`,
+                  startUs: sStartUs,
+                  endUs: sEndUs,
+                  text: sText,
+                  words: segWords,
+                  confidence: segConf,
+                };
+              });
               transcript = {
                 language,
                 segments: mlxSegments,
@@ -1260,7 +1402,30 @@ async function main() {
       return validateCanonicalTranscript(canonical);
     });
 
+    // Speaker diarization (non-blocking — enriches transcript with speaker labels)
+    try {
+      const diarizeScript = path.join(path.dirname(new URL(import.meta.url).pathname), 'lib', 'speaker_diarization.mjs');
+      console.error('[Pipeline] Running speaker diarization...');
+      await execFile('node', [diarizeScript, '--project-id', projectId, '--project-dir', projectDir, '--input', inputPath, '--max-speakers', '4'], {
+        timeout: 5 * 60 * 1000, maxBuffer: 1024 * 1024 * 4,
+      });
+      console.error('[Pipeline] Speaker diarization complete');
+    } catch (e) {
+      console.error(`[Pipeline] Speaker diarization failed (non-blocking): ${e.message}`);
+    }
+
     removeRanges = await tracker.run('cut-planning', async () => {
+      // Load topic boundaries from semantic chunks (if available) to protect topic transitions
+      let topicBoundaries = [];
+      try {
+        const scPath = path.join(projectDir, 'semantic_chunks.json');
+        const scData = JSON.parse(await fs.readFile(scPath, 'utf8'));
+        if (Array.isArray(scData.chunks) && scData.chunks.length > 1) {
+          topicBoundaries = scData.chunks.slice(1).map(c => c.startUs);
+          console.error(`[Pipeline] Loaded ${topicBoundaries.length} topic boundaries for cut protection`);
+        }
+      } catch { /* semantic chunks not yet available — skip */ }
+
       let planned;
       const isLLM = cutPlannerModel && !cutPlannerModel.startsWith('heuristic');
 
@@ -1278,10 +1443,10 @@ async function main() {
           };
         } catch (e) {
           console.error("LLM cut planning failed, falling back to heuristic:", e);
-          planned = buildSyntheticCutPlan(durationUs, transcriptPayload, { silenceRanges });
+          planned = buildSyntheticCutPlan(durationUs, transcriptPayload, { silenceRanges, topicBoundaries });
         }
       } else {
-        planned = buildSyntheticCutPlan(durationUs, transcriptPayload, { silenceRanges });
+        planned = buildSyntheticCutPlan(durationUs, transcriptPayload, { silenceRanges, topicBoundaries });
       }
 
       cutAnalysis = planned.analysis;

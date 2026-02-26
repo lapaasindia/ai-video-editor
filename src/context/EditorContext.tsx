@@ -61,12 +61,29 @@ export interface Track {
     isLocked?: boolean;
 }
 
+export interface TranscriptAnnotationFlag {
+    type: string;
+    severity: 'high' | 'medium' | 'low';
+    message: string;
+    value: number;
+}
+
 export interface TranscriptSegment {
     id: string;
     startUs: number;
     endUs: number;
     text: string;
     confidence: number;
+    speaker?: string;
+    speakerIndex?: number;
+    annotation?: {
+        flags: TranscriptAnnotationFlag[];
+        flagCount: number;
+        wordCount: number;
+        wordsPerSecond: number;
+        durationSec: number;
+        riskLevel: 'high' | 'medium' | 'low' | 'none';
+    };
 }
 
 export interface CutRange {
@@ -128,7 +145,7 @@ export interface EditorState {
     renderResult: RenderResult | null;
     enrichmentSummary: { templateCount: number; assetCount: number } | null;
     renderProgress: { percent: number; stage: string } | null;
-    agenticProgress: { currentStep: string; percent: number; status: string; detail: string } | null;
+    agenticProgress: { currentStep: string; percent: number; status: string; detail: string; llmProvider?: string; llmModel?: string; mode?: string; fps?: number; language?: string } | null;
     // Chunk-by-chunk state
     overlayChunkIndex: number;
     totalOverlayChunks: number;
@@ -181,6 +198,7 @@ interface EditorContextType extends EditorState {
     setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
     setCutPlan: React.Dispatch<React.SetStateAction<CutRange[] | null>>;
     setCurrentChunkOverlays: React.Dispatch<React.SetStateAction<ChunkOverlay[]>>;
+    updateTranscriptSegment: (segId: string, text: string) => void;
 }
 
 const EditorContext = createContext<EditorContextType | null>(null);
@@ -225,7 +243,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [renderResult, setRenderResult] = useState<RenderResult | null>(null);
     const [enrichmentSummary, setEnrichmentSummary] = useState<{ templateCount: number; assetCount: number } | null>(null);
     const [renderProgress, setRenderProgress] = useState<{ percent: number; stage: string } | null>(null);
-    const [agenticProgress, setAgenticProgress] = useState<{ currentStep: string; percent: number; status: string; detail: string } | null>(null);
+    const [agenticProgress, setAgenticProgress] = useState<{ currentStep: string; percent: number; status: string; detail: string; llmProvider?: string; llmModel?: string; mode?: string; fps?: number; language?: string } | null>(null);
     const [fullTranscript, setFullTranscript] = useState<any>(null);
     // Chunk-by-chunk overlay state
     const [overlayChunkIndex, setOverlayChunkIndex] = useState(0);
@@ -287,7 +305,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             // Network errors are expected when backend hasn't started yet — downgrade to warn
-            if (msg.includes('fetch') || msg.includes('NetworkError') || msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED')) {
+            if (msg.includes('fetch') || msg.includes('NetworkError') || msg.includes('Failed to fetch') || msg.includes('Load failed') || msg.includes('ECONNREFUSED')) {
                 logger.warn('loadProjects: backend not ready yet');
             } else {
                 logger.error('loadProjects failed', msg);
@@ -421,6 +439,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', `${BACKEND}/media/upload`);
                 xhr.setRequestHeader('x-filename', encodeURIComponent(file.name));
+                xhr.setRequestHeader('x-project-id', currentProject.id);
                 xhr.upload.onprogress = (progressEvent) => {
                     if (progressEvent.lengthComputable) {
                         const pct = Math.round((progressEvent.loaded / progressEvent.total) * 90);
@@ -608,13 +627,24 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Store the full transcript
             setFullTranscript(data.transcript || null);
 
-            // Extract segments for display
+            // Extract segments for display (including annotation flags if present)
             const segments: TranscriptSegment[] = (data.transcript?.segments || []).map((s: any) => ({
                 id: s.id || `seg-${s.startUs}`,
                 startUs: Number(s.startUs || 0),
                 endUs: Number(s.endUs || 0),
                 text: s.text || '',
                 confidence: Number(s.confidence || 0.9),
+                ...(s.speaker ? { speaker: s.speaker, speakerIndex: Number(s.speakerIndex ?? 0) } : {}),
+                ...(s.annotation ? {
+                    annotation: {
+                        flags: Array.isArray(s.annotation.flags) ? s.annotation.flags : [],
+                        flagCount: Number(s.annotation.flagCount || 0),
+                        wordCount: Number(s.annotation.wordCount || 0),
+                        wordsPerSecond: Number(s.annotation.wordsPerSecond || 0),
+                        durationSec: Number(s.annotation.durationSec || 0),
+                        riskLevel: s.annotation.riskLevel || 'none',
+                    }
+                } : {}),
             }));
             setTranscript(segments);
 
@@ -688,28 +718,57 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }));
             setCutPlan(removeRanges);
 
-            // Populate timeline from returned clips
+            // Populate timeline from returned clips + show cut ranges
             const timelineClips = data.timeline?.clips || [];
+            const cpTs = Date.now();
             if (timelineClips.length > 0) {
                 logger.info('timeline', `Populating track-1 with ${timelineClips.length} clips from cut-plan`);
-                setTracks(prev => prev.map(track => {
-                    if (track.id === 'track-1') {
-                        const videoClips = timelineClips
-                            .filter((c: any) => c.type === 'video' || !c.type)
-                            .map((c: any, idx: number) => ({
-                                id: `tl-clip-${Date.now()}-${idx}`,
-                                mediaId: videoItem.id,
-                                trackId: 'track-1',
-                                start: Number(c.startUs || 0) / 1_000_000,
-                                duration: (Number(c.endUs || 0) - Number(c.startUs || 0)) / 1_000_000,
-                                offset: Number(c.sourceStartUs || c.sourceOffsetUs || 0) / 1_000_000,
-                                type: 'video' as const,
-                                name: c.label || c.clipId || `Clip ${idx + 1}`,
-                            }));
-                        return { ...track, clips: videoClips };
+                setTracks(prev => {
+                    let next = prev.map(track => {
+                        if (track.id === 'track-1') {
+                            const videoClips: Clip[] = timelineClips
+                                .filter((c: any) => c.type === 'video' || !c.type)
+                                .map((c: any, idx: number) => ({
+                                    id: `tl-clip-${cpTs}-${idx}`,
+                                    mediaId: videoItem.id,
+                                    trackId: 'track-1',
+                                    start: Number(c.startUs || 0) / 1_000_000,
+                                    duration: (Number(c.endUs || 0) - Number(c.startUs || 0)) / 1_000_000,
+                                    offset: Number(c.sourceStartUs || c.sourceOffsetUs || 0) / 1_000_000,
+                                    type: 'video' as const,
+                                    name: c.label || c.clipId || `Clip ${idx + 1}`,
+                                }));
+                            return { ...track, clips: videoClips };
+                        }
+                        return track;
+                    });
+
+                    // Add cut ranges as a dedicated track
+                    if (removeRanges.length > 0) {
+                        const cutTrackId = 'track-rawcuts';
+                        const cutClips: Clip[] = removeRanges.map((r, idx) => ({
+                            id: `cp-cut-${cpTs}-${idx}`,
+                            mediaId: `rawcut-${idx}`,
+                            trackId: cutTrackId,
+                            start: r.startUs / 1_000_000,
+                            duration: (r.endUs - r.startUs) / 1_000_000,
+                            offset: 0,
+                            type: 'audio' as const,
+                            name: `${r.reason} (${(r.confidence * 100).toFixed(0)}%)`,
+                        }));
+                        next = next.filter(t => t.id !== cutTrackId);
+                        next.push({
+                            id: cutTrackId,
+                            name: `Detected Cuts (${removeRanges.length})`,
+                            type: 'audio' as const,
+                            clips: cutClips,
+                            isMuted: true,
+                            isLocked: true,
+                        });
                     }
-                    return track;
-                }));
+
+                    return next;
+                });
             }
 
             finishCutPlan({ removeRangesCount: removeRanges.length, timelineClipCount: timelineClips.length });
@@ -1171,6 +1230,11 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         percent: progress.percent || 0,
                         status: progress.status || 'running',
                         detail: progress.detail || '',
+                        llmProvider: progress.llmProvider,
+                        llmModel: progress.llmModel,
+                        mode: progress.mode,
+                        fps: progress.fps,
+                        language: progress.language,
                     });
                     setStatusWrapper('processing', `AI Step: ${progress.currentStep || 'processing'} (${progress.percent || 0}%)`);
                 }
@@ -1184,6 +1248,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const res = await fetch(`${BACKEND}/agentic-edit`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                signal: AbortSignal.timeout(60 * 60 * 1000), // 60 min for long videos
                 body: JSON.stringify({
                     projectId: currentProject.id,
                     input: videoItem.path,
@@ -1224,7 +1289,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // ── Wire high-retention plan into the timeline ──────────────────
             const templatePlacements: Array<{
-                id: string; templateName?: string; startUs?: number; endUs?: number;
+                id: string; templateId?: string; templateName?: string; startUs?: number; endUs?: number;
                 content?: { headline?: string; subline?: string };
             }> = aiDecisions.templateDetails || [];
 
@@ -1236,14 +1301,198 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const chunksAnalysed = aiDecisions.chunksAnalysed || 0;
             const chunksCut      = aiDecisions.chunksCut || 0;
 
+            // ── Fetch full project reports for comprehensive timeline ────────
+            const projectBase = `${BACKEND}/project-data/${currentProject.id}`;
+            const [hrPlanRes, cutPlanRes, chunksRes, seamRes, reviewRes] = await Promise.allSettled([
+                fetch(`${projectBase}/high-retention-plan.json`).then(r => r.ok ? r.json() : null),
+                fetch(`${projectBase}/cut-plan.json`).then(r => r.ok ? r.json() : null),
+                fetch(`${projectBase}/semantic_chunks.json`).then(r => r.ok ? r.json() : null),
+                fetch(`${projectBase}/seam_quality_report.json`).then(r => r.ok ? r.json() : null),
+                fetch(`${projectBase}/chunk_review_decisions.json`).then(r => r.ok ? r.json() : null),
+            ]);
+
+            const hrPlan = hrPlanRes.status === 'fulfilled' ? hrPlanRes.value : null;
+            const cutPlanData = cutPlanRes.status === 'fulfilled' ? cutPlanRes.value : null;
+            const semanticChunks = chunksRes.status === 'fulfilled' ? chunksRes.value : null;
+            const seamReport = seamRes.status === 'fulfilled' ? seamRes.value : null;
+            const reviewDecisions: Record<string, string> = (reviewRes.status === 'fulfilled' ? reviewRes.value?.decisions : null) || {};
+
+            const ts = Date.now();
+
             setTracks(prev => {
                 let next = [...prev];
 
-                // ── Track 1: AI Templates (overlay) ──────────────────────────
+                // ── Video Track: Source clips from HR plan kept decisions ─────
+                if (hrPlan?.decisions) {
+                    // Apply human review: treat rejected chunks as cuts
+                    const allDecisions = (hrPlan.decisions as any[]).map((d: any, i: number) => {
+                        const humanDecision = reviewDecisions[String(i)];
+                        if (humanDecision === 'rejected' && !d.cut) {
+                            return { ...d, cut: true, cutReason: 'human_rejected' };
+                        }
+                        return d;
+                    });
+
+                    const keptDecisions = allDecisions.filter((d: any) => !d.cut);
+                    if (keptDecisions.length > 0 && videoItem) {
+                        const sourceClips: Clip[] = keptDecisions.map((d: any, i: number) => {
+                            const humanDecision = reviewDecisions[String(d.chunkIndex ?? i)];
+                            const prefix = humanDecision === 'approved' ? '✓ ' : '';
+                            return {
+                                id: `ai-src-${ts}-${i}`,
+                                mediaId: videoItem.id,
+                                trackId: 'track-1',
+                                start: Number(d.startUs || 0) / 1_000_000,
+                                duration: (Number(d.endUs || 0) - Number(d.startUs || 0)) / 1_000_000,
+                                offset: Number(d.startUs || 0) / 1_000_000,
+                                type: 'video' as const,
+                                name: d.overlayText
+                                    ? `${prefix}${(d.overlayText as string).slice(0, 20)}`
+                                    : `${prefix}Kept ${i + 1}`,
+                                sourceRef: videoItem.path,
+                            };
+                        });
+                        next = next.map(t => t.id === 'track-1' ? { ...t, clips: sourceClips } : t);
+                    }
+
+                    // ── AI Cuts Track: Removed + human-rejected ranges ───────
+                    const cutDecisions = allDecisions.filter((d: any) => d.cut);
+                    if (cutDecisions.length > 0) {
+                        const cutTrackId = 'track-cuts-ai';
+                        const cutClips: Clip[] = cutDecisions.map((d: any, i: number) => ({
+                            id: `ai-cut-${ts}-${i}`,
+                            mediaId: `cut-${i}`,
+                            trackId: cutTrackId,
+                            start: Number(d.startUs || 0) / 1_000_000,
+                            duration: (Number(d.endUs || 0) - Number(d.startUs || 0)) / 1_000_000,
+                            offset: 0,
+                            type: 'video' as const,
+                            name: d.cutReason === 'human_rejected'
+                                ? `✗ Rejected: ${((d.text || '') as string).slice(0, 25)}`
+                                : `✂ ${d.cutReason || d.aiReason || 'Cut'}: ${((d.text || '') as string).slice(0, 25)}`,
+                        }));
+                        next = next.filter(t => t.id !== cutTrackId);
+                        next.push({
+                            id: cutTrackId,
+                            name: `AI Cuts (${cutDecisions.length})`,
+                            type: 'video' as const,
+                            clips: cutClips,
+                            isMuted: true,
+                            isLocked: true,
+                        });
+                    }
+
+                    // ── Text Overlay Track: overlayText from kept decisions ──
+                    const textDecisions = keptDecisions.filter((d: any) => d.overlayText);
+                    if (textDecisions.length > 0) {
+                        const textTrackId = 'track-text-ai';
+                        const textClips: Clip[] = textDecisions.map((d: any, i: number) => {
+                            const chunkStartSec = Number(d.startUs || 0) / 1_000_000;
+                            const textOffset = d.overlayTextTiming?.startOffsetSec || 1;
+                            const textDur = d.overlayTextTiming?.durationSec || 3;
+                            return {
+                                id: `ai-text-${ts}-${i}`,
+                                mediaId: `text-${i}`,
+                                trackId: textTrackId,
+                                start: chunkStartSec + textOffset,
+                                duration: textDur,
+                                offset: 0,
+                                type: 'text' as const,
+                                name: d.overlayText as string,
+                            };
+                        });
+                        next = next.filter(t => t.id !== textTrackId);
+                        next.push({
+                            id: textTrackId,
+                            name: `Text Overlays (${textDecisions.length})`,
+                            type: 'text' as const,
+                            clips: textClips,
+                            isMuted: false,
+                            isLocked: false,
+                        });
+                    }
+                }
+
+                // ── Cut Plan Track: Original silence/filler cuts ─────────────
+                if (cutPlanData?.removeRanges && cutPlanData.removeRanges.length > 0) {
+                    const rawCutTrackId = 'track-rawcuts';
+                    const rawCutClips: Clip[] = (cutPlanData.removeRanges as any[]).map((r: any, i: number) => ({
+                        id: `raw-cut-${ts}-${i}`,
+                        mediaId: `rawcut-${i}`,
+                        trackId: rawCutTrackId,
+                        start: Number(r.startUs || 0) / 1_000_000,
+                        duration: (Number(r.endUs || 0) - Number(r.startUs || 0)) / 1_000_000,
+                        offset: 0,
+                        type: 'audio' as const,
+                        name: `${r.reason || 'cut'} (${((r.confidence || 0.7) * 100).toFixed(0)}%)`,
+                    }));
+                    next = next.filter(t => t.id !== rawCutTrackId);
+                    next.push({
+                        id: rawCutTrackId,
+                        name: `Raw Cuts (${cutPlanData.removeRanges.length})`,
+                        type: 'audio' as const,
+                        clips: rawCutClips,
+                        isMuted: true,
+                        isLocked: true,
+                    });
+                }
+
+                // ── Semantic Chunks Track: Topic boundaries ──────────────────
+                if (semanticChunks?.chunks && semanticChunks.chunks.length > 0) {
+                    const chunkTrackId = 'track-chunks-ai';
+                    const chunkClips: Clip[] = (semanticChunks.chunks as any[]).map((c: any, i: number) => ({
+                        id: `ai-chunk-${ts}-${i}`,
+                        mediaId: `chunk-${i}`,
+                        trackId: chunkTrackId,
+                        start: Number(c.startUs || 0) / 1_000_000,
+                        duration: (Number(c.endUs || 0) - Number(c.startUs || 0)) / 1_000_000,
+                        offset: 0,
+                        type: 'text' as const,
+                        name: `${c.intent || 'chunk'} ${i + 1}: ${((c.text || '') as string).slice(0, 30)}`,
+                    }));
+                    next = next.filter(t => t.id !== chunkTrackId);
+                    next.push({
+                        id: chunkTrackId,
+                        name: `Semantic Chunks (${semanticChunks.chunks.length})`,
+                        type: 'text' as const,
+                        clips: chunkClips,
+                        isMuted: false,
+                        isLocked: true,
+                    });
+                }
+
+                // ── Seam Quality Track: Warning markers at cut points ────────
+                if (seamReport?.seams && seamReport.seams.length > 0) {
+                    const flaggedSeams = (seamReport.seams as any[]).filter((s: any) => s.seamQuality !== 'good');
+                    if (flaggedSeams.length > 0) {
+                        const seamTrackId = 'track-seams-ai';
+                        const seamClips: Clip[] = flaggedSeams.map((s: any, i: number) => ({
+                            id: `ai-seam-${ts}-${i}`,
+                            mediaId: `seam-${i}`,
+                            trackId: seamTrackId,
+                            start: Number(s.cutStartUs || 0) / 1_000_000,
+                            duration: Math.max(0.5, (Number(s.cutEndUs || 0) - Number(s.cutStartUs || 0)) / 1_000_000),
+                            offset: 0,
+                            type: 'audio' as const,
+                            name: `⚠ ${s.seamQuality}: Δ${s.energyDeltaDb}dB (fade ${s.recommendedFadeMs}ms)`,
+                        }));
+                        next = next.filter(t => t.id !== seamTrackId);
+                        next.push({
+                            id: seamTrackId,
+                            name: `Seam Warnings (${flaggedSeams.length})`,
+                            type: 'audio' as const,
+                            clips: seamClips,
+                            isMuted: true,
+                            isLocked: true,
+                        });
+                    }
+                }
+
+                // ── AI Templates Track (overlay) ─────────────────────────────
                 if (templatePlacements.length > 0) {
                     const overlayTrackId = 'track-overlay-ai';
                     const templateClips = templatePlacements.map((p, i) => ({
-                        id: `ai-tpl-${Date.now()}-${i}`,
+                        id: `ai-tpl-${ts}-${i}`,
                         mediaId: p.id || `template-${i}`,
                         trackId: overlayTrackId,
                         start: (p.startUs ?? i * 7_000_000) / 1_000_000,
@@ -1251,35 +1500,29 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         offset: 0,
                         type: 'template' as const,
                         name: p.templateName || p.id || 'AI Template',
+                        templateId: p.templateId || p.id,
                         content: {
                             headline: p.content?.headline || '',
                             subline: p.content?.subline || '',
                         },
                     }));
 
-                    const hasOverlay = next.some(t => t.id === overlayTrackId);
-                    if (hasOverlay) {
-                        next = next.map(t => t.id === overlayTrackId
-                            ? { ...t, clips: [...t.clips, ...templateClips] }
-                            : t
-                        );
-                    } else {
-                        next = [...next, {
-                            id: overlayTrackId,
-                            name: `AI Templates (${templatePlacements.length})`,
-                            type: 'overlay' as const,
-                            clips: templateClips,
-                            isMuted: false,
-                            isLocked: false,
-                        }];
-                    }
+                    next = next.filter(t => t.id !== overlayTrackId);
+                    next.push({
+                        id: overlayTrackId,
+                        name: `AI Templates (${templatePlacements.length})`,
+                        type: 'overlay' as const,
+                        clips: templateClips,
+                        isMuted: false,
+                        isLocked: false,
+                    });
                 }
 
-                // ── Track 2: B-Roll / Stock Media ─────────────────────────────
+                // ── B-Roll / Stock Media Track ───────────────────────────────
                 if (stockMedia.length > 0) {
                     const assetTrackId = 'track-broll-ai';
                     const assetClips = stockMedia.map((a, i) => ({
-                        id: `ai-broll-${Date.now()}-${i}`,
+                        id: `ai-broll-${ts}-${i}`,
                         mediaId: a.id || `asset-${i}`,
                         trackId: assetTrackId,
                         start: (a.startUs ?? i * 7_000_000) / 1_000_000,
@@ -1288,34 +1531,27 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         type: (a.kind === 'video' ? 'video' : 'image') as 'video' | 'image',
                         name: a.query || `${a.kind || 'media'} ${i + 1}`,
                         sourceRef: (a as any).localPath || undefined,
-                        assetData: {
-                            kind: a.kind || 'image',
-                            query: a.query || '',
-                            provider: a.provider || 'pexels',
-                            localPath: (a as any).localPath || '',
-                        },
                     }));
 
-                    const hasBroll = next.some(t => t.id === assetTrackId);
-                    if (hasBroll) {
-                        next = next.map(t => t.id === assetTrackId
-                            ? { ...t, clips: [...t.clips, ...assetClips] }
-                            : t
-                        );
-                    } else {
-                        next = [...next, {
-                            id: assetTrackId,
-                            name: `B-Roll / Stock (${stockMedia.length})`,
-                            type: 'video' as const,
-                            clips: assetClips,
-                            isMuted: false,
-                            isLocked: false,
-                        }];
-                    }
+                    next = next.filter(t => t.id !== assetTrackId);
+                    next.push({
+                        id: assetTrackId,
+                        name: `B-Roll / Stock (${stockMedia.length})`,
+                        type: 'video' as const,
+                        clips: assetClips,
+                        isMuted: false,
+                        isLocked: false,
+                    });
                 }
+
+                // ── Clean up empty default tracks ────────────────────────────
+                const defaultEmptyIds = ['track-2', 'track-3', 'track-4'];
+                next = next.filter(t => !defaultEmptyIds.includes(t.id) || t.clips.length > 0);
 
                 return next;
             });
+
+            logger.info('agentic', 'Timeline tracks built from all pipeline phases');
 
             finishAgentic({
                 chunksAnalysed, chunksCut,
@@ -1421,6 +1657,13 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch (err) {
             logger.error('openInFinder failed', err);
         }
+    }, []);
+
+    const updateTranscriptSegment = useCallback((segId: string, newText: string) => {
+        setTranscript(prev => {
+            if (!prev) return prev;
+            return prev.map(seg => seg.id === segId ? { ...seg, text: newText } : seg);
+        });
     }, []);
 
     const resetPipeline = useCallback(() => {
@@ -2042,6 +2285,7 @@ export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setTracks,
             setCutPlan,
             setCurrentChunkOverlays,
+            updateTranscriptSegment,
         }}>
             {children}
             <input

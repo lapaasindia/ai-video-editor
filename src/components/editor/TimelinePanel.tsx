@@ -17,6 +17,17 @@ const TRACK_COLORS: Record<string, string> = {
     text: '#ffb300',
 };
 
+// Per-track-id color overrides for AI-generated tracks
+const AI_TRACK_COLORS: Record<string, string> = {
+    'track-cuts-ai': '#e74c3c',      // Red — removed segments
+    'track-rawcuts': '#e74c3c',       // Red — silence/filler cuts
+    'track-seams-ai': '#e67e22',      // Orange — seam quality warnings
+    'track-chunks-ai': '#1abc9c',     // Teal — semantic chunk boundaries
+    'track-text-ai': '#f1c40f',       // Gold — text overlays
+    'track-overlay-ai': '#9b59b6',    // Purple — AI templates
+    'track-broll-ai': '#3498db',      // Blue — B-roll/stock media
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const formatTime = (seconds: number): string => {
@@ -52,6 +63,16 @@ export const TimelinePanel: React.FC = () => {
 
     const [zoom, setZoom] = useState(1);
     const [scrollLeft, setScrollLeft] = useState(0);
+    const [hiddenTracks, setHiddenTracks] = useState<Set<string>>(new Set());
+
+    const toggleTrackVisibility = useCallback((trackId: string) => {
+        setHiddenTracks(prev => {
+            const next = new Set(prev);
+            if (next.has(trackId)) next.delete(trackId);
+            else next.add(trackId);
+            return next;
+        });
+    }, []);
     const timelineRef = useRef<HTMLDivElement>(null);
     const headerRef = useRef<HTMLDivElement>(null);
     const isScrollingRef = useRef(false);
@@ -77,10 +98,23 @@ export const TimelinePanel: React.FC = () => {
         return maxEnd + 5; // add padding
     }, [tracks]);
 
-    // Track display order: overlay/text → video → audio
-    const TRACK_ORDER: Record<string, number> = { overlay: 0, text: 1, video: 2, audio: 3 };
+    // Track display order: per-id for AI tracks (pipeline phase order), type-based fallback
+    const AI_TRACK_ORDER: Record<string, number> = {
+        'track-overlay-ai': 10,  // AI Templates
+        'track-text-ai': 20,     // Text Overlays
+        'track-chunks-ai': 30,   // Semantic Chunks
+        'track-1': 40,           // Source Video
+        'track-broll-ai': 50,    // B-Roll / Stock
+        'track-cuts-ai': 60,     // AI Cuts (removed)
+        'track-rawcuts': 65,     // Raw silence/filler cuts
+        'track-seams-ai': 70,    // Seam warnings
+    };
+    const TYPE_ORDER: Record<string, number> = { overlay: 15, text: 25, video: 45, audio: 75 };
     const sortedTracks = useMemo(() =>
-        [...tracks].sort((a, b) => (TRACK_ORDER[a.type] ?? 2) - (TRACK_ORDER[b.type] ?? 2)),
+        [...tracks].sort((a, b) =>
+            (AI_TRACK_ORDER[a.id] ?? TYPE_ORDER[a.type] ?? 50) -
+            (AI_TRACK_ORDER[b.id] ?? TYPE_ORDER[b.type] ?? 50)
+        ),
         [tracks]);
 
     const totalWidth = totalDuration * pxPerSec;
@@ -335,41 +369,55 @@ export const TimelinePanel: React.FC = () => {
                     {/* Ruler header */}
                     <div style={{ height: 26, borderBottom: '1px solid #333' }} />
 
-                    {sortedTracks.map(track => (
-                        <div key={track.id} style={{
-                            height: TRACK_HEIGHT,
-                            display: 'flex',
-                            alignItems: 'center',
-                            padding: '0 8px',
-                            borderBottom: '1px solid #222',
-                            fontSize: '0.75rem',
-                            color: '#aaa',
-                            gap: 6,
-                        }}>
-                            <span style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                background: TRACK_COLORS[track.type] || '#666',
-                                flexShrink: 0,
-                            }} />
-                            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {track.name}
-                                </span>
+                    {sortedTracks.map(track => {
+                        const isHidden = hiddenTracks.has(track.id);
+                        return (
+                            <div key={track.id} style={{
+                                height: isHidden ? 20 : TRACK_HEIGHT,
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '0 8px',
+                                borderBottom: '1px solid #222',
+                                fontSize: '0.75rem',
+                                color: isHidden ? '#555' : '#aaa',
+                                gap: 4,
+                                opacity: isHidden ? 0.6 : 1,
+                            }}>
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); if (confirm('Delete track?')) deleteTrack(track.id); }}
+                                    title={isHidden ? 'Show track' : 'Hide track'}
+                                    onClick={(e) => { e.stopPropagation(); toggleTrackVisibility(track.id); }}
                                     style={{
-                                        background: 'transparent', border: 'none', color: '#666',
-                                        cursor: 'pointer', fontSize: 10, padding: 2, display: 'none'
+                                        background: 'transparent', border: 'none',
+                                        color: isHidden ? '#555' : '#888',
+                                        cursor: 'pointer', fontSize: 9, padding: 0, flexShrink: 0, width: 14,
                                     }}
-                                    className="track-delete-btn"
-                                >
-                                    ✕
-                                </button>
+                                >{isHidden ? '◉' : '◈'}</button>
+                                <span style={{
+                                    width: 8,
+                                    height: 8,
+                                    borderRadius: '50%',
+                                    background: AI_TRACK_COLORS[track.id] || TRACK_COLORS[track.type] || '#666',
+                                    flexShrink: 0,
+                                }} />
+                                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: isHidden ? '0.65rem' : '0.75rem' }}>
+                                        {track.isLocked && <span title="Locked" style={{ fontSize: 8, marginRight: 3 }}>🔒</span>}
+                                        {track.name}
+                                    </span>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); if (confirm('Delete track?')) deleteTrack(track.id); }}
+                                        style={{
+                                            background: 'transparent', border: 'none', color: '#666',
+                                            cursor: 'pointer', fontSize: 10, padding: 2, display: 'none'
+                                        }}
+                                        className="track-delete-btn"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
 
                     {/* Add Track Buttons */}
                     <div style={{ padding: 8, display: 'flex', gap: 4, justifyContent: 'center', borderTop: '1px solid #333' }}>
@@ -425,7 +473,9 @@ export const TimelinePanel: React.FC = () => {
                             ))}
                         </div>
 
-                        {sortedTracks.map(track => (
+                        {sortedTracks.map(track => {
+                            const isHidden = hiddenTracks.has(track.id);
+                            return (
                             <div
                                 key={track.id}
                                 onDragOver={(e) => {
@@ -506,33 +556,41 @@ export const TimelinePanel: React.FC = () => {
                                     }
                                 }}
                                 style={{
-                                    height: TRACK_HEIGHT,
+                                    height: isHidden ? 20 : TRACK_HEIGHT,
                                     position: 'relative',
                                     borderBottom: '1px solid #222',
-                                    background: 'var(--panel-content-bg, #12121e)',
+                                    background: isHidden ? 'var(--panel-bg, #0f0f1e)' : 'var(--panel-content-bg, #12121e)',
+                                    overflow: isHidden ? 'hidden' : undefined,
                                 }}
                             >
-                                {track.clips.map(clip => {
+                                {!isHidden && track.clips.map(clip => {
                                     const left = clip.start * pxPerSec;
                                     const width = clip.duration * pxPerSec;
                                     const isSelected = selectedClipId === clip.id;
-                                    const baseColor = TRACK_COLORS[track.type] || '#666';
+                                    const baseColor = AI_TRACK_COLORS[track.id] || TRACK_COLORS[track.type] || '#666';
+                                    const isLocked = !!track.isLocked;
+
+                                    const clipEndSec = clip.start + clip.duration;
+                                    const tooltipText = `${clip.name || 'Clip'}\n${formatTime(clip.start)} → ${formatTime(clipEndSec)} (${clip.duration.toFixed(1)}s)${isLocked ? '\n(locked)' : ''}`;
 
                                     return (
                                         <div
                                             key={clip.id}
                                             className="timeline-clip"
-                                            onClick={(e) => { e.stopPropagation(); setSelectedClipId(clip.id); }}
+                                            title={tooltipText}
+                                            onClick={(e) => { e.stopPropagation(); setSelectedClipId(clip.id); seekTo(clip.start); }}
                                             style={{
                                                 position: 'absolute',
                                                 left,
                                                 top: 4,
                                                 width: Math.max(width, 4),
                                                 height: TRACK_HEIGHT - 8,
-                                                background: `linear-gradient(180deg, ${baseColor}cc, ${baseColor}88)`,
+                                                background: isLocked
+                                                    ? `repeating-linear-gradient(135deg, ${baseColor}88, ${baseColor}88 4px, ${baseColor}55 4px, ${baseColor}55 8px)`
+                                                    : `linear-gradient(180deg, ${baseColor}cc, ${baseColor}88)`,
                                                 borderRadius: 4,
                                                 border: isSelected ? '2px solid #fff' : `1px solid ${baseColor}`,
-                                                cursor: dragState ? 'grabbing' : 'grab',
+                                                cursor: isLocked ? 'default' : (dragState ? 'grabbing' : 'grab'),
                                                 overflow: 'hidden',
                                                 display: 'flex',
                                                 alignItems: 'center',
@@ -540,7 +598,7 @@ export const TimelinePanel: React.FC = () => {
                                                 zIndex: isSelected ? 10 : 1,
                                                 transition: dragState ? 'none' : 'box-shadow 0.15s',
                                             }}
-                                            onMouseDown={(e) => handleClipMouseDown(e, clip.id, track.id, clip.start, 'move')}
+                                            onMouseDown={isLocked ? undefined : (e) => handleClipMouseDown(e, clip.id, track.id, clip.start, 'move')}
                                         >
                                             {/* Left trim handle */}
                                             <div
@@ -555,7 +613,7 @@ export const TimelinePanel: React.FC = () => {
                                                     borderRadius: '4px 0 0 4px',
                                                     zIndex: 2,
                                                 }}
-                                                onMouseDown={(e) => handleClipMouseDown(e, clip.id, track.id, clip.start, 'trim-start')}
+                                                onMouseDown={isLocked ? undefined : (e) => handleClipMouseDown(e, clip.id, track.id, clip.start, 'trim-start')}
                                             />
 
                                             {/* Clip label */}
@@ -586,13 +644,14 @@ export const TimelinePanel: React.FC = () => {
                                                     borderRadius: '0 4px 4px 0',
                                                     zIndex: 2,
                                                 }}
-                                                onMouseDown={(e) => handleClipMouseDown(e, clip.id, track.id, clip.start + clip.duration, 'trim-end')}
+                                                onMouseDown={isLocked ? undefined : (e) => handleClipMouseDown(e, clip.id, track.id, clip.start + clip.duration, 'trim-end')}
                                             />
                                         </div>
                                     );
                                 })}
                             </div>
-                        ))}
+                            );
+                        })}
 
 
 

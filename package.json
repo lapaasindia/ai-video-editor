@@ -40,7 +40,7 @@
     "vite": "^7.3.1"
   },
   "scripts": {
-    "dev": "remotion studio",
+    "dev": "remotion studio --disable-git-source",
     "build": "remotion bundle",
     "upgrade": "remotion upgrade",
     "verify": "npm run lint && npm run templates:audit && npm test",
@@ -66,6 +66,7 @@
     "desktop:backend": "node desktop/backend/server.mjs",
     "codex": "node scripts/codex.mjs",
     "dev:app": "vite",
+    "dev:full": "node desktop/backend/server.mjs & vite",
     "build:app": "tsc -p tsconfig.app.json && vite build",
     "preview:app": "vite preview",
     "desktop:tauri:dev": "cd src-tauri && cargo tauri dev",

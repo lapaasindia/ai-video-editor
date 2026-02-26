@@ -36,13 +36,14 @@ export const useTauri = () => {
             }
             const routeMap: Record<string, { method: string; path: string; body?: any }> = {
                 'list_projects': { method: 'GET', path: '/projects' },
-                'create_project': { method: 'POST', path: '/projects/create', body: args.request },
-                'ingest_media': { method: 'POST', path: '/media/ingest', body: args.request },
-                'start_editing': { method: 'POST', path: '/start-editing', body: args.request },
-                'edit_now': { method: 'POST', path: '/edit-now', body: args.request },
-                'render': { method: 'POST', path: '/render', body: args.request },
+                'create_project': { method: 'POST', path: '/projects/create', body: args.request || args },
+                'ingest_media': { method: 'POST', path: '/media/ingest', body: args.request || args },
+                'start_editing': { method: 'POST', path: '/start-editing', body: args.request || args },
+                'edit_now': { method: 'POST', path: '/edit-now', body: args.request || args },
+                'render': { method: 'POST', path: '/render', body: args.request || args },
                 'model_health': { method: 'GET', path: '/models/health' },
-                'install_model': { method: 'POST', path: '/models/install', body: args },
+                'install_model': { method: 'POST', path: '/models/install', body: args.request || args },
+                'save_project': { method: 'POST', path: '/projects/save', body: args.request || args },
             };
 
             const route = routeMap[cmd];

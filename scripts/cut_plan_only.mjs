@@ -17,6 +17,7 @@ import path from 'node:path';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { validateCutPlan, validateCutRanges } from './lib/pipeline_schema.mjs';
+import { hwDecodeArgs } from './lib/metal_accel.mjs';
 
 const execFile = promisify(execFileCb);
 const DEFAULT_DURATION_US = 10_000_000;
@@ -98,7 +99,8 @@ async function detectSilenceRanges(inputPath, durationUs) {
     const hasFfmpeg = await commandExists('ffmpeg');
     if (!hasFfmpeg) return [];
     try {
-        const result = await runWithOutput('ffmpeg', ['-hide_banner', '-i', inputPath, '-af', 'silencedetect=noise=-35dB:d=0.6', '-f', 'null', '-'], 6 * 60 * 1000);
+        const decArgs = await hwDecodeArgs();
+        const result = await runWithOutput('ffmpeg', ['-hide_banner', ...decArgs, '-i', inputPath, '-af', 'silencedetect=noise=-35dB:d=0.6', '-f', 'null', '-'], 6 * 60 * 1000);
         return parseSilenceRangesFromLog(result.stderr, durationUs);
     } catch (error) {
         const stderr = String(error?.stderr || error?.message || '');

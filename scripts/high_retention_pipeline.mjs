@@ -158,7 +158,14 @@ SURROUNDING CONTEXT (±2 min):
 AVAILABLE TEMPLATES:
 ${JSON.stringify(templateOptions, null, 1)}
 
-TASK: Analyse this chunk and output a JSON decision. Be aggressive with cuts — remove anything repeated or filler.
+TASK: Analyse this chunk and output a structured JSON edit plan with precise sub-chunk timing for each overlay element. Be aggressive with cuts — remove anything repeated or filler.
+
+TIMING RULES:
+- startOffsetSec is relative to the chunk start (0 = chunk begins)
+- durationSec is how long the element displays
+- No element should exceed the chunk duration (${durationSec}s)
+- Avoid overlapping template + image at the same time — stagger them
+- Template appears first (0-3s), then B-roll fills the rest
 
 Output ONLY raw JSON:
 {
@@ -167,11 +174,18 @@ Output ONLY raw JSON:
   "template": {
     "templateId": "${templateOptions[0]?.id || ''}",
     "headline": "catchy 5-7 word Hindi/English headline from this chunk",
-    "subline": "brief supporting stat or context (max 40 chars)"
+    "subline": "brief supporting stat or context (max 40 chars)",
+    "startOffsetSec": 0,
+    "durationSec": 3
   },
   "imageQuery": "descriptive English query for stock photo matching this topic",
+  "imageTiming": { "startOffsetSec": 3, "durationSec": ${Math.max(2, durationSec - 3)} },
   "videoQuery": "descriptive English query for B-roll video matching this topic",
-  "overlayText": "key stat or quote to show on screen (max 8 words)"
+  "videoTiming": { "startOffsetSec": 0, "durationSec": ${durationSec} },
+  "overlayText": "key stat or quote to show on screen (max 8 words)",
+  "overlayTextTiming": { "startOffsetSec": 1, "durationSec": 3 },
+  "visualPriority": "template|image|video",
+  "transition": "cut|dissolve|slide"
 }`;
 
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -179,7 +193,13 @@ Output ONLY raw JSON:
             const response = await runLLMPrompt(llmConfig, prompt, 120_000);
             const result = extractJsonFromLLMOutput(response);
 
-            // Validate and normalise
+            // Validate and normalise (including sub-chunk timing)
+            const normTemplate = result.template ? {
+                ...result.template,
+                startOffsetSec: Number(result.template.startOffsetSec ?? 0),
+                durationSec: Math.min(Number(result.template.durationSec ?? 3), durationSec),
+            } : null;
+
             return {
                 chunkIndex: chunk.index,
                 startUs: chunk.startUs,
@@ -188,10 +208,24 @@ Output ONLY raw JSON:
                 text: chunk.text,
                 cut: Boolean(result.cut),
                 cutReason: result.cutReason || null,
-                template: result.template || null,
+                template: normTemplate,
                 imageQuery: result.imageQuery || null,
+                imageTiming: result.imageTiming ? {
+                    startOffsetSec: Math.min(Number(result.imageTiming.startOffsetSec ?? 0), durationSec),
+                    durationSec: Math.min(Number(result.imageTiming.durationSec ?? durationSec), durationSec),
+                } : null,
                 videoQuery: result.videoQuery || null,
+                videoTiming: result.videoTiming ? {
+                    startOffsetSec: Math.min(Number(result.videoTiming.startOffsetSec ?? 0), durationSec),
+                    durationSec: Math.min(Number(result.videoTiming.durationSec ?? durationSec), durationSec),
+                } : null,
                 overlayText: result.overlayText || null,
+                overlayTextTiming: result.overlayTextTiming ? {
+                    startOffsetSec: Math.min(Number(result.overlayTextTiming.startOffsetSec ?? 0), durationSec),
+                    durationSec: Math.min(Number(result.overlayTextTiming.durationSec ?? 3), durationSec),
+                } : null,
+                visualPriority: result.visualPriority || 'template',
+                transition: result.transition || 'cut',
                 aiSource: `${llmConfig.provider}/${llmConfig.model}`,
             };
         } catch (e) {
@@ -344,9 +378,29 @@ async function main() {
     const catalog = await discoverTemplateCatalog();
     console.error(`[HR] Template catalog: ${catalog.length} templates`);
 
-    // 3. Split into topic chunks
-    const chunks = splitIntoTopicChunks(segments);
-    console.error(`[HR] Split into ${chunks.length} topic chunks (avg ${Math.round(durationUs / 1_000_000 / chunks.length)}s each)`);
+    // 3. Split into topic chunks — prefer semantic_chunks.json if available
+    const semanticChunksPath = path.join(projectDir, 'semantic_chunks.json');
+    let chunks;
+    try {
+        const sc = JSON.parse(await fs.readFile(semanticChunksPath, 'utf8'));
+        if (sc.chunks && sc.chunks.length > 0) {
+            chunks = sc.chunks.map((c, i) => ({
+                index: i,
+                startUs: c.startUs,
+                endUs: c.endUs,
+                text: c.text,
+                intent: c.intent || null,
+                energy: c.energy ?? null,
+            }));
+            console.error(`[HR] Using ${chunks.length} semantic chunks (intent-classified, boundary-aligned)`);
+        } else {
+            throw new Error('Empty semantic chunks');
+        }
+    } catch {
+        chunks = splitIntoTopicChunks(segments);
+        console.error(`[HR] Semantic chunks unavailable — using basic splitter: ${chunks.length} chunks`);
+    }
+    console.error(`[HR] ${chunks.length} topic chunks (avg ${Math.round(durationUs / 1_000_000 / Math.max(1, chunks.length))}s each)`);
 
     // 4. Analyse each chunk with AI in parallel (concurrency=2 — Codex rate limit safe)
     console.error(`[HR] Analysing ${chunks.length} chunks with AI (parallel, concurrency=2)...`);
@@ -354,7 +408,7 @@ async function main() {
     const rawDecisions = await parallelMap(chunks, async (chunk) => {
         console.error(`[HR] Chunk ${chunk.index + 1}/${chunks.length}: "${chunk.text.slice(0, 60)}..."`);
         return analyseChunkWithAI(chunk, segments, catalog, llmConfig, chunks.length);
-    }, 2);
+    }, 2); // Explicitly pass 2 as concurrency
 
     // 5. Enforce density — something every 5-7 seconds
     const decisions = enforceDensity(rawDecisions, catalog);
@@ -492,10 +546,13 @@ async function main() {
     await writeJson(outputPath, plan);
 
     console.error(`[HR] Done: ${kept.length} kept, ${cut.length} cut, ${withTemplate.length} templates, ${withImage.length} images, ${withVideo.length} videos`);
-    process.stdout.write(JSON.stringify(plan, null, 2));
+    // Write JSON to stdout and wait for flush before exiting
+    await new Promise((resolve) => process.stdout.write(JSON.stringify(plan, null, 2), resolve));
 }
 
-main().catch(e => {
+main().then(() => {
+    process.exit(0);
+}).catch(e => {
     console.error('[HR] Fatal:', e.message);
-    process.exitCode = 1;
+    process.exit(1);
 });

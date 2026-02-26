@@ -4,6 +4,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import { hwDecodeArgs, hwEncodeVideoArgs, hwEncodeAudioArgs } from './lib/metal_accel.mjs';
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const ROOT_DIR = path.resolve(SCRIPT_DIR, '..');
 
 const execFile = promisify(execFileCb);
 
@@ -86,24 +91,21 @@ async function probeMedia(inputPath) {
 
 async function maybeGenerateProxy(inputPath, outputPath) {
   try {
+    const decArgs = await hwDecodeArgs();
+    const vEnc = await hwEncodeVideoArgs({ quality: 'fast' });
+    const aEnc = await hwEncodeAudioArgs({ bitrate: '128k' });
     await run(
       'ffmpeg',
       [
         '-y',
+        ...decArgs,
         '-i',
         inputPath,
         '-vf',
         "scale='min(1280,iw)':-2",
-        '-c:v',
-        'libx264',
-        '-preset',
-        'veryfast',
-        '-crf',
-        '28',
-        '-c:a',
-        'aac',
-        '-b:a',
-        '128k',
+        ...vEnc,
+        ...aEnc,
+        '-movflags', '+faststart',
         outputPath,
       ],
       30 * 60 * 1000,
@@ -155,8 +157,28 @@ async function main() {
   const ffmpegExists = await commandExists('ffmpeg');
 
   const mediaMeta = await probeMedia(absInput);
-  const mediaDir = path.resolve('desktop', 'data', projectId, 'media');
+  const projectDir = path.resolve('desktop', 'data', projectId);
+  const mediaDir = path.join(projectDir, 'media');
   await fs.mkdir(mediaDir, { recursive: true });
+
+  // ── Run Input Quality Gate ───────────────────────────────────────────────
+  let qualityReport = null;
+  if (ffmpegExists) {
+    try {
+      console.error('[Ingest] Running input quality gate...');
+      const qualityGateScript = path.join(SCRIPT_DIR, 'input_quality_gate.mjs');
+      const { stdout: qgOut } = await run(
+        'node',
+        [qualityGateScript, '--input', absInput, '--project-id', projectId, '--project-dir', projectDir],
+        5 * 60 * 1000,
+      );
+      qualityReport = JSON.parse(qgOut);
+      console.error(`[Ingest] Quality gate: ${qualityReport.overallStatus?.toUpperCase()} (${qualityReport.summary?.pass}P/${qualityReport.summary?.warn}W/${qualityReport.summary?.fail}F)`);
+    } catch (e) {
+      console.error(`[Ingest] Quality gate failed (non-blocking): ${e.message}`);
+      qualityReport = { ok: true, overallStatus: 'unknown', error: e.message };
+    }
+  }
 
   const proxyPath = path.join(mediaDir, 'proxy.mp4');
   const waveformPath = path.join(mediaDir, 'waveform.png');
@@ -180,6 +202,7 @@ async function main() {
     media: mediaMeta,
     proxy: proxyResult,
     waveform: waveformResult,
+    qualityGate: qualityReport,
   };
 
   await fs.writeFile(metadataPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');

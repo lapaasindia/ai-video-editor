@@ -32,6 +32,13 @@
     "externalBin": [
       "binaries/node"
     ],
+    "resources": [
+      "../scripts/**/*.mjs",
+      "../scripts/**/*.sh",
+      "../desktop/backend/**/*.mjs",
+      "../package.json",
+      "../.env"
+    ],
     "macOS": {
       "signingIdentity": null,
       "entitlements": null

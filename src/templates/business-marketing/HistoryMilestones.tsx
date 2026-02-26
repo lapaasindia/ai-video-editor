@@ -28,7 +28,7 @@ export const historyMilestonesSchema = z.object({
     })).default([
         { year: '2018', title: 'The Idea Born', imageUrl: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?w=800' },
         { year: '2020', title: 'First Office', imageUrl: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800' },
-        { year: '2022', title: 'Series A Funding', imageUrl: 'https://images.unsplash.com/photo-1556761175-5973dc0f32d7?w=800' },
+        { year: '2022', title: 'Series A Funding', imageUrl: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=800' },
         { year: '2024', title: 'Global Expansion', imageUrl: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800' },
     ]),
     backgroundColor: z.string().default(COLORS.bg),

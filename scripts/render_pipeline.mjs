@@ -129,12 +129,12 @@ async function withRetries(label, maxRetries, retryDelayMs, runAction, onRetry =
 
 function qualityProfile(quality) {
   if (quality === 'draft') {
-    return { preset: 'veryfast', crf: 30 };
+    return { preset: 'veryfast', crf: 30, quality: 'fast' };
   }
   if (quality === 'quality') {
-    return { preset: 'medium', crf: 18 };
+    return { preset: 'medium', crf: 18, quality: 'high' };
   }
-  return { preset: 'fast', crf: 23 };
+  return { preset: 'fast', crf: 23, quality: 'balanced' };
 }
 
 function usToSec(us) {
@@ -394,18 +394,61 @@ function escapeSubtitlePath(filePath) {
     .replace(/\]/g, '\\]');
 }
 
-async function renderSegment({ sourcePath, startUs, endUs, outputPath, profile }) {
+async function renderSegment({ sourcePath, startUs, endUs, outputPath, profile, seamFadeMs = 50, paddingMs = 0, audioLeadMs = 0, audioLagMs = 0 }) {
   const isAudio = isAudioPath(sourcePath);
   const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
   const aEnc = await hwEncodeAudioArgs({ bitrate: '160k' });
   const decArgs = await hwDecodeArgs();
 
+  // Apply padding: expand source range slightly for smoother cuts
+  const paddingUs = paddingMs * 1000;
+  const adjStartUs = Math.max(0, startUs - paddingUs);
+  const adjEndUs = endUs + paddingUs;
+
+  // J-cut / L-cut: audio range differs from video range
+  // J-cut (audioLeadMs > 0): audio starts earlier → next segment's audio leads its video
+  // L-cut (audioLagMs > 0): audio extends beyond video → current segment's audio trails
+  const audioLeadUs = audioLeadMs * 1000;
+  const audioLagUs = audioLagMs * 1000;
+  const audioStartUs = Math.max(0, adjStartUs - audioLeadUs);
+  const audioEndUs = adjEndUs + audioLagUs;
+  const hasJLCut = audioLeadMs > 0 || audioLagMs > 0;
+
+  // Build audio fade filter for smooth seam transitions
+  const fadeSec = Math.max(0.02, seamFadeMs / 1000);
+  const audioDurationSec = (audioEndUs - audioStartUs) / 1_000_000;
+  const fadeOutStart = Math.max(0, audioDurationSec - fadeSec);
+  const afadeFilter = `afade=t=in:st=0:d=${fadeSec},afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeSec}`;
+
   if (isAudio) {
     await run('ffmpeg', [
       '-y', '-loglevel', 'error',
       '-f', 'lavfi', '-i', 'color=c=black:s=1920x1080:r=30',
-      '-ss', usToSec(startUs), '-to', usToSec(endUs), '-i', sourcePath,
+      '-ss', usToSec(audioStartUs), '-to', usToSec(audioEndUs), '-i', sourcePath,
       '-map', '0:v', '-map', '1:a',
+      '-af', afadeFilter,
+      '-shortest',
+      ...vEnc,
+      ...aEnc,
+      '-movflags', '+faststart',
+      outputPath,
+    ]);
+  } else if (hasJLCut) {
+    // J/L-cut: use filter_complex to apply different trim ranges for video vs audio
+    const vStartSec = usToSec(adjStartUs);
+    const vEndSec = usToSec(adjEndUs);
+    const aStartSec = usToSec(audioStartUs);
+    const aEndSec = usToSec(audioEndUs);
+    const filterComplex = [
+      `[0:v]trim=start=${vStartSec}:end=${vEndSec},setpts=PTS-STARTPTS[v]`,
+      `[0:a]atrim=start=${aStartSec}:end=${aEndSec},asetpts=PTS-STARTPTS,${afadeFilter}[a]`,
+    ].join(';');
+    await run('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      ...decArgs,
+      '-i', sourcePath,
+      '-filter_complex', filterComplex,
+      '-map', '[v]', '-map', '[a]',
       '-shortest',
       ...vEnc,
       ...aEnc,
@@ -416,13 +459,60 @@ async function renderSegment({ sourcePath, startUs, endUs, outputPath, profile }
     await run('ffmpeg', [
       '-y', '-loglevel', 'error',
       ...decArgs,
-      '-ss', usToSec(startUs),
-      '-to', usToSec(endUs),
+      '-ss', usToSec(adjStartUs),
+      '-to', usToSec(adjEndUs),
       '-i', sourcePath,
       '-map', '0:v:0',
       '-map', '0:a?',
+      '-af', afadeFilter,
       ...vEnc,
       ...aEnc,
+      '-movflags', '+faststart',
+      outputPath,
+    ]);
+  }
+}
+
+/**
+ * Render a low-res preview for a single chunk (480p, fast preset).
+ * Used by chunk QC scoring to visually validate edit plans.
+ * @param {object} opts
+ * @param {string} opts.sourcePath - Path to source video/audio
+ * @param {number} opts.startUs - Chunk start in microseconds
+ * @param {number} opts.endUs - Chunk end in microseconds
+ * @param {string} opts.outputPath - Where to write the preview MP4
+ * @param {number} [opts.seamFadeMs=50] - Audio fade duration
+ */
+async function renderChunkPreview({ sourcePath, startUs, endUs, outputPath, seamFadeMs = 50 }) {
+  const isAudio = isAudioPath(sourcePath);
+  const fadeSec = Math.max(0.02, seamFadeMs / 1000);
+  const segDurationSec = (endUs - startUs) / 1_000_000;
+  const fadeOutStart = Math.max(0, segDurationSec - fadeSec);
+  const afadeFilter = `afade=t=in:st=0:d=${fadeSec},afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeSec}`;
+
+  if (isAudio) {
+    await run('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      '-f', 'lavfi', '-i', 'color=c=black:s=854x480:r=24',
+      '-ss', usToSec(startUs), '-to', usToSec(endUs), '-i', sourcePath,
+      '-map', '0:v', '-map', '1:a',
+      '-af', afadeFilter,
+      '-shortest',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
+      '-c:a', 'aac', '-b:a', '96k',
+      '-movflags', '+faststart',
+      outputPath,
+    ]);
+  } else {
+    await run('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      '-ss', usToSec(startUs), '-to', usToSec(endUs),
+      '-i', sourcePath,
+      '-vf', 'scale=-2:480',
+      '-af', afadeFilter,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
+      '-c:a', 'aac', '-b:a', '96k',
+      '-r', '24',
       '-movflags', '+faststart',
       outputPath,
     ]);
@@ -447,6 +537,8 @@ async function concatSegments(listPath, outputPath, profile) {
     ]);
     return;
   } catch {
+    const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
+    const aEnc = await hwEncodeAudioArgs({ bitrate: '160k' });
     await run('ffmpeg', [
       '-y',
       '-loglevel',
@@ -457,18 +549,8 @@ async function concatSegments(listPath, outputPath, profile) {
       '0',
       '-i',
       listPath,
-      '-c:v',
-      'libx264',
-      '-preset',
-      profile.preset,
-      '-crf',
-      String(profile.crf),
-      '-pix_fmt',
-      'yuv420p',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '160k',
+      ...vEnc,
+      ...aEnc,
       '-movflags',
       '+faststart',
       outputPath,
@@ -506,6 +588,7 @@ async function preRenderTemplates(timeline, tempDir, profile) {
         outputPath,
         '--props', JSON.stringify(props),
         '--codec', 'prores',
+        '--concurrency', String(Math.max(2, Math.min(os.cpus().length, 8))),
         '--quiet'
       ], 10 * 60 * 1000); // 10 min timeout per template
 
@@ -651,6 +734,11 @@ async function main() {
   const outputName = readArg('--output-name');
   const quality = safeQuality(readArg('--quality', 'balanced'));
   const burnSubtitles = readArg('--burn-subtitles', 'false') === 'true';
+  const captionsVariants = readArg('--captions-variants', 'false') === 'true'; // Export both captioned + uncaptioned
+  const watermarkPath = readArg('--watermark', ''); // Path to watermark image (PNG with transparency)
+  const watermarkPos = readArg('--watermark-position', 'bottom-right'); // top-left, top-right, bottom-left, bottom-right
+  const watermarkOpacity = parseFloat(readArg('--watermark-opacity', '0.6'));
+  const exportFormats = readArg('--formats', '').split(',').map(f => f.trim()).filter(Boolean); // e.g. "vertical,shorts"
   const maxRetries = safeInteger(
     readArg('--max-retries', process.env.LAPAAS_RENDER_MAX_RETRIES ?? '1'),
     1,
@@ -739,6 +827,25 @@ async function main() {
     const { timeline, sourceClips, profile, defaultSourcePath } = setup;
     const segmentPaths = [];
 
+    // Load seam quality report for per-cut fade/padding recommendations
+    const seamReportPath = path.join(projectDir, 'seam_quality_report.json');
+    let seamLookup = {};
+    try {
+      if (await exists(seamReportPath)) {
+        const seamReport = await readJson(seamReportPath);
+        for (const seam of (seamReport.seams || [])) {
+          // Key by cutEndUs — the point where the next kept segment starts
+          seamLookup[seam.cutEndUs] = {
+            fadeMs: seam.recommendedFadeMs || 50,
+            paddingMs: seam.recommendedPaddingMs || 0,
+            audioLeadMs: seam.audioLeadMs || 0,
+            audioLagMs: seam.audioLagMs || 0,
+          };
+        }
+        console.error(`[Render] Loaded ${Object.keys(seamLookup).length} seam quality recommendations`);
+      }
+    } catch { /* no seam report — use defaults */ }
+
     await tracker.run('segment-render', async () => {
       for (let index = 0; index < sourceClips.length; index += 1) {
         const clip = sourceClips[index];
@@ -747,6 +854,13 @@ async function main() {
           warnings.push(`Skipped clip ${clip.id}: source path unavailable.`);
           continue;
         }
+
+        // Look up per-cut seam recommendations (match by segment start time)
+        const seamRec = seamLookup[clip.sourceStartUs] || {};
+        const seamFadeMs = seamRec.fadeMs || 50;
+        const paddingMs = seamRec.paddingMs || 0;
+        const audioLeadMs = seamRec.audioLeadMs || 0;
+        const audioLagMs = seamRec.audioLagMs || 0;
 
         const segmentPath = path.join(tempDir, `segment-${String(index + 1).padStart(3, '0')}.mp4`);
         const retryResult = await withRetries(
@@ -760,6 +874,10 @@ async function main() {
               endUs: clip.sourceEndUs,
               outputPath: segmentPath,
               profile,
+              seamFadeMs,
+              paddingMs,
+              audioLeadMs,
+              audioLagMs,
             }),
           onRetry,
         );
@@ -818,9 +936,44 @@ async function main() {
     });
     warnings.push(...overlayResult.warnings);
 
+    // ── Watermark / Branding Overlay ──────────────────────────────────────────
+    let watermarkedPath = compositedPath;
+    if (watermarkPath && (await exists(watermarkPath))) {
+      await tracker.run('watermark', async () => {
+        const wmTemp = path.join(tempDir, 'watermarked.mp4');
+        const posMap = {
+          'top-left': '10:10',
+          'top-right': 'main_w-overlay_w-10:10',
+          'bottom-left': '10:main_h-overlay_h-10',
+          'bottom-right': 'main_w-overlay_w-10:main_h-overlay_h-10',
+        };
+        const overlay = posMap[watermarkPos] || posMap['bottom-right'];
+        const opacityVal = Math.max(0.1, Math.min(1.0, watermarkOpacity));
+        const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
+        try {
+          await run('ffmpeg', [
+            '-y', '-loglevel', 'error',
+            '-i', compositedPath,
+            '-i', watermarkPath,
+            '-filter_complex', `[1:v]format=rgba,colorchannelmixer=aa=${opacityVal.toFixed(2)}[wm];[0:v][wm]overlay=${overlay}[out]`,
+            '-map', '[out]', '-map', '0:a?',
+            ...vEnc,
+            '-c:a', 'copy',
+            '-movflags', '+faststart',
+            wmTemp,
+          ]);
+          watermarkedPath = wmTemp;
+          console.error(`[Render] Watermark applied: ${watermarkPos}, opacity ${opacityVal}`);
+        } catch (e) {
+          warnings.push(`Watermark overlay failed: ${e.message}`);
+          console.error(`[Render] Watermark failed, continuing without: ${e.message}`);
+        }
+      });
+    }
+
     const finalOutputPath = path.join(renderDir, normalizeOutputName(outputName, projectId));
     let subtitlesBurned = false;
-    const preSubtitlePath = compositedPath;
+    const preSubtitlePath = watermarkedPath;
 
     await tracker.run('subtitle-finalize', async () => {
       if (burnSubtitles && (await exists(subtitlesPath))) {
@@ -829,6 +982,7 @@ async function main() {
         await fs.copyFile(subtitlesPath, subtitleTempPath);
         const escapedSubtitlePath = escapeSubtitlePath(subtitleTempPath);
         try {
+          const subtitleBurnVEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
           const retryResult = await withRetries(
             'subtitle-burn',
             maxRetries,
@@ -842,14 +996,7 @@ async function main() {
                 preSubtitlePath,
                 '-vf',
                 `subtitles=filename=${escapedSubtitlePath}`,
-                '-c:v',
-                'libx264',
-                '-preset',
-                profile.preset,
-                '-crf',
-                String(Math.min(35, profile.crf + 1)),
-                '-pix_fmt',
-                'yuv420p',
+                ...subtitleBurnVEnc,
                 '-c:a',
                 'copy',
                 '-movflags',
@@ -871,6 +1018,29 @@ async function main() {
           warnings.push('Subtitle burn-in requested, but subtitles.srt was not found.');
         }
         await fs.copyFile(preSubtitlePath, finalOutputPath);
+      }
+    });
+
+    // ── Audio Loudness Normalization (EBU R128) ──────────────────────────────
+    let loudnormApplied = false;
+    await tracker.run('loudnorm', async () => {
+      try {
+        const loudnormTemp = path.join(tempDir, 'loudnorm.mp4');
+        const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
+        await run('ffmpeg', [
+          '-y', '-loglevel', 'error',
+          '-i', finalOutputPath,
+          '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+          '-c:v', 'copy',
+          '-movflags', '+faststart',
+          loudnormTemp,
+        ]);
+        await fs.rename(loudnormTemp, finalOutputPath);
+        loudnormApplied = true;
+        console.error('[Render] Audio loudness normalization applied (EBU R128: I=-16, TP=-1.5, LRA=11)');
+      } catch (e) {
+        warnings.push(`Audio loudnorm failed (non-critical): ${e.message}`);
+        console.error(`[Render] Loudnorm failed, keeping original audio: ${e.message}`);
       }
     });
 
@@ -901,6 +1071,7 @@ async function main() {
       quality,
       burnSubtitlesRequested: burnSubtitles,
       subtitlesBurned,
+      loudnormApplied,
       sourceClipCount: sourceClips.length,
       overlayClipCount,
       overlayAppliedCount: overlayResult.appliedCount,
@@ -917,6 +1088,120 @@ async function main() {
       startedAt,
       finishedAt,
     };
+
+    // ── Multi-Format Exports ────────────────────────────────────────────────
+    const formatExports = [];
+
+    if (exportFormats.includes('vertical') || exportFormats.includes('9:16')) {
+      try {
+        const verticalPath = finalOutputPath.replace(/\.mp4$/, '-vertical.mp4');
+        const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
+        const aEnc = await hwEncodeAudioArgs({ bitrate: '160k' });
+        await run('ffmpeg', [
+          '-y', '-loglevel', 'error',
+          '-i', finalOutputPath,
+          '-vf', "crop=ih*9/16:ih,scale=1080:1920",
+          ...vEnc,
+          ...aEnc,
+          '-movflags', '+faststart',
+          verticalPath,
+        ]);
+        formatExports.push({ format: 'vertical_9_16', path: verticalPath, ok: true });
+        console.error(`[Render] Exported vertical 9:16: ${verticalPath}`);
+      } catch (e) {
+        warnings.push(`Vertical export failed: ${e.message}`);
+        formatExports.push({ format: 'vertical_9_16', ok: false, error: e.message });
+      }
+    }
+
+    if (exportFormats.includes('shorts')) {
+      try {
+        // Extract shorts candidates from global analysis if available
+        const globalPath = path.join(projectDir, 'global_analysis.json');
+        let candidates = [];
+        if (await exists(globalPath)) {
+          const ga = await readJson(globalPath);
+          candidates = ga.shortsCandidates?.candidates || [];
+        }
+        if (candidates.length === 0) {
+          // Default: extract first 60s as a short
+          candidates = [{ startUs: 0, endUs: 60_000_000, durationSec: 60 }];
+        }
+
+        for (let si = 0; si < Math.min(candidates.length, 3); si++) {
+          const c = candidates[si];
+          const shortPath = finalOutputPath.replace(/\.mp4$/, `-short-${si + 1}.mp4`);
+          const vEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
+          const aEnc = await hwEncodeAudioArgs({ bitrate: '160k' });
+          await run('ffmpeg', [
+            '-y', '-loglevel', 'error',
+            '-ss', usToSec(c.startUs),
+            '-to', usToSec(c.endUs),
+            '-i', finalOutputPath,
+            '-vf', "crop=ih*9/16:ih,scale=1080:1920",
+            ...vEnc,
+            ...aEnc,
+            '-movflags', '+faststart',
+            shortPath,
+          ]);
+          formatExports.push({ format: 'short', index: si + 1, path: shortPath, durationSec: c.durationSec, ok: true });
+          console.error(`[Render] Exported short ${si + 1}: ${shortPath} (${c.durationSec}s)`);
+        }
+      } catch (e) {
+        warnings.push(`Shorts export failed: ${e.message}`);
+        formatExports.push({ format: 'shorts', ok: false, error: e.message });
+      }
+    }
+
+    // ── Captions On/Off Variants ──────────────────────────────────────────
+    if (captionsVariants && (await exists(subtitlesPath))) {
+      try {
+        if (subtitlesBurned) {
+          // Main file has captions — create a no-captions variant from preSubtitlePath
+          const noCaptionsPath = finalOutputPath.replace(/\.mp4$/, '-no-captions.mp4');
+          await fs.copyFile(preSubtitlePath, noCaptionsPath);
+          // Apply loudnorm to no-captions variant
+          try {
+            const loudTemp = path.join(tempDir, 'nocap-loud.mp4');
+            await run('ffmpeg', [
+              '-y', '-loglevel', 'error',
+              '-i', noCaptionsPath,
+              '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+              '-c:v', 'copy',
+              '-movflags', '+faststart',
+              loudTemp,
+            ]);
+            await fs.rename(loudTemp, noCaptionsPath);
+          } catch { /* non-critical */ }
+          formatExports.push({ format: 'no-captions', path: noCaptionsPath, ok: true });
+          console.error(`[Render] Exported no-captions variant: ${noCaptionsPath}`);
+        } else {
+          // Main file has no captions — create a with-captions variant
+          const captionedPath = finalOutputPath.replace(/\.mp4$/, '-captioned.mp4');
+          const subtitleTempDir2 = await fs.mkdtemp(path.join(os.tmpdir(), 'lapaas-capvar-'));
+          const subtitleTempPath2 = path.join(subtitleTempDir2, 'subtitles.srt');
+          await fs.copyFile(subtitlesPath, subtitleTempPath2);
+          const escapedPath2 = escapeSubtitlePath(subtitleTempPath2);
+          const capVEnc = await hwEncodeVideoArgs({ quality: profile.quality || 'balanced' });
+          await run('ffmpeg', [
+            '-y', '-loglevel', 'error',
+            '-i', finalOutputPath,
+            '-vf', `subtitles=filename=${escapedPath2}`,
+            ...capVEnc,
+            '-c:a', 'copy',
+            '-movflags', '+faststart',
+            captionedPath,
+          ]);
+          formatExports.push({ format: 'captioned', path: captionedPath, ok: true });
+          console.error(`[Render] Exported captioned variant: ${captionedPath}`);
+        }
+      } catch (e) {
+        warnings.push(`Captions variant export failed: ${e.message}`);
+        formatExports.push({ format: 'captions-variant', ok: false, error: e.message });
+      }
+    }
+
+    result.formatExports = formatExports;
 
     const historyPath = await appendRenderHistory(projectDir, {
       ...result,
@@ -967,7 +1252,28 @@ async function main() {
   }
 }
 
-main().catch(async (error) => {
-  process.stderr.write(`${String(error?.message ?? error)}\n`);
-  process.exit(1);
-});
+// ── Preview-chunk sub-command ────────────────────────────────────────────────
+// Usage: node render_pipeline.mjs --preview-chunk --source <path> --start-us <n> --end-us <n> --output <path>
+if (process.argv.includes('--preview-chunk')) {
+  const src = readArg('--source');
+  const startUs = Number(readArg('--start-us', '0'));
+  const endUs = Number(readArg('--end-us', '0'));
+  const output = readArg('--output');
+  if (!src || !output || endUs <= startUs) {
+    process.stderr.write('Usage: --preview-chunk --source <path> --start-us <n> --end-us <n> --output <path>\n');
+    process.exit(1);
+  }
+  renderChunkPreview({ sourcePath: src, startUs, endUs, outputPath: output })
+    .then(() => {
+      process.stdout.write(JSON.stringify({ ok: true, output, durationUs: endUs - startUs }));
+    })
+    .catch(err => {
+      process.stderr.write(`Preview render failed: ${err.message}\n`);
+      process.exit(1);
+    });
+} else {
+  main().catch(async (error) => {
+    process.stderr.write(`${String(error?.message ?? error)}\n`);
+    process.exit(1);
+  });
+}

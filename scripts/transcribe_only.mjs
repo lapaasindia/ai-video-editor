@@ -20,6 +20,7 @@ import os from 'node:os';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { validateCanonicalTranscript } from './lib/pipeline_schema.mjs';
+import { hwDecodeArgs, parallelMap } from './lib/metal_accel.mjs';
 
 const execFile = promisify(execFileCb);
 const DEFAULT_DURATION_US = 10_000_000;
@@ -122,11 +123,13 @@ async function selectTranscriptionAdapter({ mode, fallbackPolicy, transcriptionM
         if (hasSarvamKey) return buildSarvam();
         warnings.push('Sarvam selected but SARVAM_API_KEY missing.');
     }
-    if (hasSarvamKey && isIndicLanguage) { console.error(`[Adapter] Using Sarvam AI for ${language}`); return buildSarvam(); }
+    
+    // Unconditionally prioritize Sarvam if key exists
+    if (hasSarvamKey) { console.error(`[Adapter] Using Sarvam AI for transcription (Main priority)`); return buildSarvam(); }
+
     if (mode === 'local') { if (!local.available) throw new Error('No local runtime found'); return buildLocal(); }
-    if (mode === 'api') { if (hasSarvamKey && isIndicLanguage) return buildSarvam(); return buildApi(); }
+    if (mode === 'api') { return buildApi(); }
     if (local.available) return buildLocal();
-    if (hasSarvamKey && isIndicLanguage) return buildSarvam();
     return buildApi();
 }
 
@@ -139,14 +142,16 @@ async function splitAudioIntoChunks(inputPath, chunkDurationSec = 25) {
     await fs.mkdir(tmpDir, { recursive: true });
     const durationSec = await getDurationUs(inputPath) / 1_000_000;
     const chunkCount = Math.ceil(durationSec / chunkDurationSec);
-    const chunks = [];
-    for (let i = 0; i < chunkCount; i++) {
-        const startSec = i * chunkDurationSec;
-        const chunkPath = path.join(tmpDir, `chunk_${String(i).padStart(3, '0')}.wav`);
-        await runWithOutput('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', inputPath, '-ss', String(startSec), '-t', String(chunkDurationSec), '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', chunkPath], 120000);
-        chunks.push({ path: chunkPath, startSec, index: i });
-    }
-    return { tmpDir, chunks };
+    const decArgs = await hwDecodeArgs();
+    const chunkDescs = Array.from({ length: chunkCount }, (_, i) => ({
+        index: i,
+        startSec: i * chunkDurationSec,
+        path: path.join(tmpDir, `chunk_${String(i).padStart(3, '0')}.wav`),
+    }));
+    await parallelMap(chunkDescs, async (chunk) => {
+        await runWithOutput('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...decArgs, '-i', inputPath, '-ss', String(chunk.startSec), '-t', String(chunkDurationSec), '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', chunk.path], 120000);
+    }, 6);
+    return { tmpDir, chunks: chunkDescs };
 }
 
 async function transcribeChunkWithSarvam(chunkPath, language, apiKey) {
@@ -234,7 +239,8 @@ async function transcribeWithSarvam(inputPath, language) {
 // ── Faster-Whisper Transcription ────────────────────────────────────────────
 
 async function extractAudioForWhisper(inputPath, outputPath) {
-    await runWithOutput('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', inputPath, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', outputPath], 600000);
+    const decArgs = await hwDecodeArgs();
+    await runWithOutput('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...decArgs, '-i', inputPath, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', outputPath], 600000);
 }
 
 async function transcribeWithFasterWhisper(adapter, inputPath) {

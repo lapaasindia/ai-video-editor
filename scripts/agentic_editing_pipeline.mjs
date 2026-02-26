@@ -58,16 +58,28 @@ async function runScriptStep(scriptName, args, timeoutMs = 10 * 60 * 1000) {
         const { stdout, stderr } = await execFileAsync('node', [scriptPath, ...args], {
             cwd: ROOT_DIR,
             timeout: timeoutMs,
-            maxBuffer: 1024 * 1024 * 8,
+            maxBuffer: 1024 * 1024 * 64,
         });
 
         if (stderr) console.error(`[${scriptName}]`, stderr.slice(0, 800));
 
         const output = (stdout ?? '').toString().trim();
+        if (!output) {
+            throw new Error(`Script returned empty output. Stderr: ${stderr}`);
+        }
+        
+        // Try direct parse first, then extract last JSON object/array from mixed output
         try {
             return JSON.parse(output);
-        } catch {
-            return { raw: output };
+        } catch (_directParseErr) {
+            // Scripts may mix log lines (e.g. [Diarize]) with JSON — extract last { or [ block
+            const jsonMatch = output.match(/[\s\S]*(\{[\s\S]*\}|\[[\s\S]*\])\s*$/);
+            if (jsonMatch) {
+                try {
+                    return JSON.parse(jsonMatch[1]);
+                } catch (_) { /* fall through */ }
+            }
+            throw new Error(`Script output was not valid JSON. Output: ${output.slice(0, 500)}...`);
         }
     } catch (e) {
         throw new Error(`Script ${scriptName} failed: ${e.message}`);
@@ -101,7 +113,16 @@ async function main() {
 
     const steps = [
         'transcription',
+        'transcript_annotation',
+        'semantic_chunking',
         'high_retention_analysis',
+        'chunk_qc',
+        'asset_quality',
+        'cut_safety_review',
+        'seam_quality',
+        'cross_chunk_review',
+        'global_analysis',
+        'pre_render_qa',
         'timeline_assembly',
     ];
 
@@ -120,9 +141,14 @@ async function main() {
             percent: Math.round((currentStepIndex / steps.length) * 100),
             updatedAt: new Date().toISOString(),
             completedSteps: steps.slice(0, currentStepIndex),
+            llmProvider,
+            llmModel,
+            mode,
+            fps,
+            language
         };
         await writeJson(agentStatePath, progress);
-        console.error(`[Agent] Step ${currentStepIndex + 1}/${steps.length}: ${step} — ${status} ${detail}`);
+        console.error(`[Agent] Step ${currentStepIndex + 1}/${steps.length}: ${step} — ${status} ${detail} [LLM: ${llmProvider}/${llmModel}]`);
     }
 
     try {
@@ -189,12 +215,81 @@ async function main() {
             `${results.transcription.segments} segments, ${results.transcription.removeRanges} cuts`
         );
 
-        // ── Step 2: High-Retention Chunk Analysis ────────────────────────────
-        // Splits transcript into 2-3 sentence topic chunks (~5-7s each).
+        // ── Step 2: Transcript Annotation ─────────────────────────────────────
+        currentStepIndex = 1;
+        await updateProgress('transcript_annotation', 'running', 'Annotating transcript quality flags...');
+
+        try {
+            const annotationResult = await runScriptStep('annotate_transcript.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+            ], 3 * 60 * 1000);
+
+            results.annotation = {
+                reliability: annotationResult.reliability?.overall ?? 'unknown',
+                score: annotationResult.reliability?.score ?? 0,
+                flaggedSegments: annotationResult.reliability?.flaggedSegments ?? 0,
+                highRiskSegments: annotationResult.reliability?.highRiskSegments ?? 0,
+            };
+            await updateProgress('transcript_annotation', 'done',
+                `Reliability: ${results.annotation.reliability} (${results.annotation.score}/100), ${results.annotation.flaggedSegments} flagged`
+            );
+        } catch (e) {
+            console.error(`[Agent] Transcript annotation failed (non-blocking): ${e.message}`);
+            results.annotation = { reliability: 'unknown', score: 0, error: e.message };
+            await updateProgress('transcript_annotation', 'skipped', 'Annotation failed — continuing');
+        }
+
+        // ── Speaker Diarization (sub-step after annotation) ──────────────────
+        try {
+            await updateProgress('transcript_annotation', 'running', 'Running speaker diarization...');
+            const diarizeResult = await runScriptStep('lib/speaker_diarization.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+                '--input', input,
+                '--max-speakers', '4',
+            ], 5 * 60 * 1000);
+
+            results.diarization = {
+                method: diarizeResult.method || 'unknown',
+                speakerCount: diarizeResult.speakerCount || 0,
+            };
+            console.error(`[Agent] Speaker diarization: ${results.diarization.speakerCount} speakers (${results.diarization.method})`);
+        } catch (e) {
+            console.error(`[Agent] Speaker diarization failed (non-blocking): ${e.message}`);
+            results.diarization = { method: 'failed', speakerCount: 0, error: e.message };
+        }
+
+        // ── Step 3: Semantic Chunking ──────────────────────────────────────────
+        currentStepIndex = 2;
+        await updateProgress('semantic_chunking', 'running', 'Splitting transcript into semantic topic chunks...');
+
+        try {
+            const chunkResult = await runScriptStep('lib/semantic_chunker.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+            ], 5 * 60 * 1000);
+
+            results.semanticChunking = {
+                totalChunks: chunkResult.stats?.totalChunks ?? 0,
+                avgDurationSec: chunkResult.stats?.avgChunkDurationSec ?? 0,
+                intents: chunkResult.stats?.intentDistribution ?? {},
+                fixes: chunkResult.stats?.validationFixes ?? 0,
+            };
+            await updateProgress('semantic_chunking', 'done',
+                `${results.semanticChunking.totalChunks} chunks (avg ${results.semanticChunking.avgDurationSec}s), ${results.semanticChunking.fixes} fixes`
+            );
+        } catch (e) {
+            console.error(`[Agent] Semantic chunking failed (non-blocking): ${e.message}`);
+            results.semanticChunking = { error: e.message };
+            await updateProgress('semantic_chunking', 'skipped', 'Semantic chunking failed — HR pipeline will use basic splitter');
+        }
+
+        // ── Step 4: High-Retention Chunk Analysis ────────────────────────────
         // AI analyses each chunk with 2-min context window and decides:
         //   - Template to show, image/video B-roll query, cut decision
         // Guarantees something happens every 5-7 seconds.
-        currentStepIndex = 1;
+        currentStepIndex = 3;
         await updateProgress('high_retention_analysis', 'running',
             'AI analysing transcript chunks for high-retention editing...');
 
@@ -203,7 +298,7 @@ async function main() {
             '--project-dir', projectDir,
             '--llm-provider', llmProvider,
             ...(llmModel ? ['--llm-model', llmModel] : []),
-        ], 20 * 60 * 1000); // 20 min timeout for full video analysis
+        ], 45 * 60 * 1000); // 45 min timeout for full video analysis (149+ chunks × Codex CLI)
 
         results.highRetention = {
             totalChunks: hrResult.stats?.totalChunks ?? 0,
@@ -246,8 +341,264 @@ async function main() {
             `${results.templates.count} templates, ${results.stockMedia.count} assets`
         );
 
-        // ── Step 3: Timeline Assembly ─────────────────────────────────────────
-        currentStepIndex = 2;
+        // ── Step 5: Chunk QC Scoring + Iterative Re-Plan Loop ────────────────
+        currentStepIndex = 4;
+        await updateProgress('chunk_qc', 'running', 'Scoring chunk edit plan quality...');
+
+        try {
+            // Initial QC scoring
+            const chunkQcResult = await runScriptStep('lib/chunk_qc.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+            ], 5 * 60 * 1000);
+
+            results.chunkQc = {
+                totalChunks: chunkQcResult.totalChunks ?? 0,
+                passed: chunkQcResult.summary?.passed ?? 0,
+                failed: chunkQcResult.summary?.failed ?? 0,
+                avgScore: chunkQcResult.summary?.avgScore ?? 0,
+                passRate: chunkQcResult.summary?.passRate ?? 0,
+            };
+
+            // If chunks failed, run iterative re-plan loop
+            if (results.chunkQc.failed > 0) {
+                await updateProgress('chunk_qc', 'running',
+                    `${results.chunkQc.failed} chunks below threshold — re-planning with improvement hints...`
+                );
+
+                try {
+                    const replanResult = await runScriptStep('lib/chunk_replan.mjs', [
+                        '--project-id', projectId,
+                        '--project-dir', projectDir,
+                        '--llm-provider', llmProvider,
+                        ...(llmModel ? ['--llm-model', llmModel] : []),
+                        '--max-iterations', '2',
+                    ], 10 * 60 * 1000);
+
+                    results.chunkQc.replan = {
+                        replanned: replanResult.replanned ?? 0,
+                        iterations: replanResult.iterations ?? 0,
+                    };
+
+                    // Re-score after re-plan
+                    const rescoreResult = await runScriptStep('lib/chunk_qc.mjs', [
+                        '--project-id', projectId,
+                        '--project-dir', projectDir,
+                    ], 5 * 60 * 1000);
+
+                    results.chunkQc.afterReplan = {
+                        passed: rescoreResult.summary?.passed ?? 0,
+                        failed: rescoreResult.summary?.failed ?? 0,
+                        avgScore: rescoreResult.summary?.avgScore ?? 0,
+                    };
+                } catch (replanErr) {
+                    console.error(`[Agent] Chunk re-plan failed (non-blocking): ${replanErr.message}`);
+                    results.chunkQc.replan = { error: replanErr.message };
+                }
+            }
+
+            const qcSummary = results.chunkQc.afterReplan || results.chunkQc;
+            await updateProgress('chunk_qc', 'done',
+                `${qcSummary.passed ?? results.chunkQc.passed} passed, ${qcSummary.failed ?? results.chunkQc.failed} failed (avg ${qcSummary.avgScore ?? results.chunkQc.avgScore}/100)` +
+                (results.chunkQc.replan?.replanned ? ` — ${results.chunkQc.replan.replanned} re-planned` : '')
+            );
+        } catch (e) {
+            console.error(`[Agent] Chunk QC failed (non-blocking): ${e.message}`);
+            results.chunkQc = { error: e.message };
+            await updateProgress('chunk_qc', 'skipped', 'Chunk QC failed — continuing');
+        }
+
+        // ── Step 6: Asset Quality Gate ──────────────────────────────────────────
+        currentStepIndex = 5;
+        await updateProgress('asset_quality', 'running', 'Validating fetched assets...');
+
+        try {
+            const assetQResult = await runScriptStep('lib/asset_quality.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+            ], 5 * 60 * 1000);
+
+            results.assetQuality = {
+                totalAssets: assetQResult.totalAssets ?? 0,
+                pass: assetQResult.summary?.pass ?? 0,
+                warn: assetQResult.summary?.warn ?? 0,
+                fail: assetQResult.summary?.fail ?? 0,
+                duplicates: assetQResult.summary?.duplicates ?? 0,
+            };
+            await updateProgress('asset_quality', 'done',
+                `${results.assetQuality.pass} pass, ${results.assetQuality.warn} warn, ${results.assetQuality.fail} fail, ${results.assetQuality.duplicates} dupes`
+            );
+        } catch (e) {
+            console.error(`[Agent] Asset quality gate failed (non-blocking): ${e.message}`);
+            results.assetQuality = { error: e.message };
+            await updateProgress('asset_quality', 'skipped', 'Asset quality gate failed — continuing');
+        }
+
+        // ── Step 7: Cut Safety Review ──────────────────────────────────────────
+        currentStepIndex = 6;
+        await updateProgress('cut_safety_review', 'running', 'Reviewing cut safety and seam quality...');
+
+        try {
+            const cutSafetyResult = await runScriptStep('lib/cut_safety.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+            ], 5 * 60 * 1000);
+
+            results.cutSafety = {
+                totalCuts: cutSafetyResult.totalCuts ?? 0,
+                safeCuts: cutSafetyResult.safeCuts ?? 0,
+                riskyCuts: cutSafetyResult.riskyCuts ?? 0,
+                downgradedCuts: cutSafetyResult.downgradedCuts ?? 0,
+            };
+            await updateProgress('cut_safety_review', 'done',
+                `${results.cutSafety.safeCuts} safe, ${results.cutSafety.riskyCuts} risky, ${results.cutSafety.downgradedCuts} downgraded`
+            );
+        } catch (e) {
+            console.error(`[Agent] Cut safety review failed (non-blocking): ${e.message}`);
+            results.cutSafety = { error: e.message };
+            await updateProgress('cut_safety_review', 'skipped', 'Cut safety review failed — continuing');
+        }
+
+        // ── Step 8: Seam Quality Analysis ──────────────────────────────────────
+        currentStepIndex = 7;
+        await updateProgress('seam_quality', 'running', 'Analysing audio seam quality at cut points...');
+
+        try {
+            const seamResult = await runScriptStep('lib/seam_quality.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+            ], 5 * 60 * 1000);
+
+            results.seamQuality = {
+                seamCount: seamResult.seamCount ?? 0,
+                good: (seamResult.seams || []).filter(s => s.seamQuality === 'good').length,
+                fair: (seamResult.seams || []).filter(s => s.seamQuality === 'fair').length,
+                poor: (seamResult.seams || []).filter(s => s.seamQuality === 'poor').length,
+            };
+            await updateProgress('seam_quality', 'done',
+                `${results.seamQuality.seamCount} seams: ${results.seamQuality.good} good, ${results.seamQuality.fair} fair, ${results.seamQuality.poor} poor`
+            );
+        } catch (e) {
+            console.error(`[Agent] Seam quality analysis failed (non-blocking): ${e.message}`);
+            results.seamQuality = { error: e.message };
+            await updateProgress('seam_quality', 'skipped', 'Seam quality analysis failed — continuing');
+        }
+
+        // ── Step 9: Cross-Chunk Consistency Review ──────────────────────────────
+        currentStepIndex = 8;
+        await updateProgress('cross_chunk_review', 'running', 'Reviewing cross-chunk consistency...');
+
+        try {
+            const crossResult = await runScriptStep('lib/cross_chunk_review.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+            ], 5 * 60 * 1000);
+
+            results.crossChunk = {
+                issueCount: crossResult.issueCount ?? 0,
+                high: crossResult.severity?.high ?? 0,
+                medium: crossResult.severity?.medium ?? 0,
+                low: crossResult.severity?.low ?? 0,
+            };
+            await updateProgress('cross_chunk_review', 'done',
+                `${results.crossChunk.issueCount} issues (${results.crossChunk.high}H/${results.crossChunk.medium}M/${results.crossChunk.low}L)`
+            );
+        } catch (e) {
+            console.error(`[Agent] Cross-chunk review failed (non-blocking): ${e.message}`);
+            results.crossChunk = { error: e.message };
+            await updateProgress('cross_chunk_review', 'skipped', 'Cross-chunk review failed — continuing');
+        }
+
+        // ── Step 10: Global Video Intelligence ──────────────────────────────────
+        currentStepIndex = 9;
+        await updateProgress('global_analysis', 'running', 'Running global video intelligence pass...');
+
+        try {
+            const globalResult = await runScriptStep('global_video_analysis.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+            ], 5 * 60 * 1000);
+
+            results.globalAnalysis = {
+                hookScore: globalResult.hook?.score ?? 0,
+                retentionRisks: globalResult.retentionRisks?.count ?? 0,
+                overloadZones: globalResult.overloadZones?.count ?? 0,
+                shortsCandidates: globalResult.shortsCandidates?.count ?? 0,
+            };
+            await updateProgress('global_analysis', 'done',
+                `Hook ${results.globalAnalysis.hookScore}/100, ${results.globalAnalysis.retentionRisks} retention risks, ${results.globalAnalysis.shortsCandidates} shorts candidates`
+            );
+        } catch (e) {
+            console.error(`[Agent] Global analysis failed (non-blocking): ${e.message}`);
+            results.globalAnalysis = { error: e.message };
+            await updateProgress('global_analysis', 'skipped', 'Global analysis failed — continuing');
+        }
+
+        // ── Step 11: Pre-Render QA ──────────────────────────────────────────
+        currentStepIndex = 10;
+        await updateProgress('pre_render_qa', 'running', 'Running pre-render quality checks...');
+
+        try {
+            const preQaResult = await runScriptStep('lib/pre_render_qa.mjs', [
+                '--project-id', projectId,
+                '--project-dir', projectDir,
+            ], 5 * 60 * 1000);
+
+            results.preRenderQa = {
+                overallStatus: preQaResult.overallStatus ?? 'unknown',
+                pass: preQaResult.summary?.pass ?? 0,
+                warn: preQaResult.summary?.warn ?? 0,
+                fail: preQaResult.summary?.fail ?? 0,
+            };
+            await updateProgress('pre_render_qa', 'done',
+                `${results.preRenderQa.overallStatus.toUpperCase()}: ${results.preRenderQa.pass}P/${results.preRenderQa.warn}W/${results.preRenderQa.fail}F`
+            );
+        } catch (e) {
+            console.error(`[Agent] Pre-render QA failed (non-blocking): ${e.message}`);
+            results.preRenderQa = { error: e.message };
+            await updateProgress('pre_render_qa', 'skipped', 'Pre-render QA failed — continuing');
+        }
+
+        // ── Step 12: Timeline Assembly ──────────────────────────────────────
+        currentStepIndex = 11;
+
+        // Apply human review decisions: mark rejected chunks as cut in the HR plan
+        try {
+            const reviewPath = path.join(projectDir, 'chunk_review_decisions.json');
+            const hrPlanPath = path.join(projectDir, 'high-retention-plan.json');
+            const reviewRaw = await fs.readFile(reviewPath, 'utf8').catch(() => null);
+            if (reviewRaw) {
+                const review = JSON.parse(reviewRaw);
+                const decisions = review.decisions || {};
+                const rejectedIndices = Object.entries(decisions)
+                    .filter(([, v]) => v === 'rejected')
+                    .map(([k]) => Number(k));
+
+                if (rejectedIndices.length > 0) {
+                    const hrPlanRaw = await fs.readFile(hrPlanPath, 'utf8').catch(() => null);
+                    if (hrPlanRaw) {
+                        const hrPlan = JSON.parse(hrPlanRaw);
+                        let patched = 0;
+                        for (const idx of rejectedIndices) {
+                            if (hrPlan.decisions?.[idx] && !hrPlan.decisions[idx].cut) {
+                                hrPlan.decisions[idx].cut = true;
+                                hrPlan.decisions[idx].cutReason = 'human_rejected';
+                                patched++;
+                            }
+                        }
+                        if (patched > 0) {
+                            hrPlan.humanReviewApplied = true;
+                            hrPlan.humanReviewAt = new Date().toISOString();
+                            await writeJson(hrPlanPath, hrPlan);
+                            console.error(`[Agent] Applied human review: ${patched} chunks marked as rejected`);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error(`[Agent] Human review application failed (non-blocking): ${e.message}`);
+        }
+
         await updateProgress('timeline_assembly', 'done', 'Timeline enriched with high-retention AI edits');
 
         // ── Final Summary ─────────────────────────────────────────────────────
@@ -267,14 +618,32 @@ async function main() {
                 stockMediaSuggested: results.stockMedia?.count || 0,
                 templateDetails: results.templates?.placements || [],
                 stockMediaDetails: results.stockMedia?.suggestions || [],
+                semanticChunks: results.semanticChunking?.totalChunks || 0,
+                seamQuality: results.seamQuality || null,
+                chunkQcPassRate: results.chunkQc?.passRate ?? null,
+                chunkQcReplanned: results.chunkQc?.replan?.replanned ?? 0,
+                crossChunkIssues: results.crossChunk?.issueCount ?? 0,
+                globalHookScore: results.globalAnalysis?.hookScore ?? null,
+                preRenderQaStatus: results.preRenderQa?.overallStatus ?? null,
             },
         };
 
         await updateProgress('complete', 'done', 'All steps finished');
         await writeJson(path.join(projectDir, 'agentic-edit-result.json'), summary);
 
+        // Learn style preferences from this project (non-blocking)
+        try {
+            const stylePrefsScript = path.join(path.dirname(fileURLToPath(import.meta.url)), 'lib', 'style_preferences.mjs');
+            await execFileAsync('node', [stylePrefsScript, '--project-id', projectId, '--project-dir', projectDir], {
+                timeout: 15000, maxBuffer: 1024 * 1024,
+            });
+            console.error('[Agent] Style preferences updated from this project');
+        } catch (e) {
+            console.error(`[Agent] Style preference learning failed (non-blocking): ${e.message}`);
+        }
+
         // Pipeline scripts print JSON to stdout for the backend to read
-        process.stdout.write(JSON.stringify(summary, null, 2));
+        await new Promise((resolve) => process.stdout.write(JSON.stringify(summary, null, 2), resolve));
     } catch (e) {
         const errorResult = {
             ok: false,
@@ -284,12 +653,14 @@ async function main() {
             completedSteps: steps.slice(0, currentStepIndex),
         };
         await updateProgress(steps[currentStepIndex] || 'unknown', 'failed', e.message);
-        process.stdout.write(JSON.stringify(errorResult, null, 2));
+        await new Promise((resolve) => process.stdout.write(JSON.stringify(errorResult, null, 2), resolve));
         process.exitCode = 1;
     }
 }
 
-main().catch(e => {
+main().then(() => {
+    process.exit(0);
+}).catch(e => {
     console.error('[Agent] Fatal error:', e);
-    process.exitCode = 1;
+    process.exit(1);
 });

@@ -8,8 +8,56 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 fn workspace_root() -> Result<PathBuf, String> {
-    let current =
+    // 1. Check for explicit override (useful for dev/CI)
+    if let Ok(v) = std::env::var("LAPAAS_WORKSPACE_ROOT") {
+        let p = PathBuf::from(v);
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+
+    // 2. Try to resolve from the executable path (works in .app bundle)
+    if let Ok(exe) = std::env::current_exe() {
+        // In a macOS .app: Contents/MacOS/lapaas-ai-editor-desktop
+        // Resources are at: Contents/Resources/
+        // But we bundle scripts at the same level, so check parent dirs
+        if let Some(macos_dir) = exe.parent() {
+            // Check if we're inside a .app bundle
+            if let Some(contents_dir) = macos_dir.parent() {
+                let resources_dir = contents_dir.join("Resources");
+                // If resources dir has our scripts, use it
+                if resources_dir.join("scripts").exists()
+                    || resources_dir.join("desktop").exists()
+                {
+                    return Ok(resources_dir);
+                }
+            }
+
+            // Dev mode: exe is in target/debug/ or target/release/
+            // Walk up to find package.json
+            let mut search = macos_dir.to_path_buf();
+            for _ in 0..6 {
+                if search.join("package.json").exists() && search.join("scripts").exists() {
+                    return Ok(search);
+                }
+                match search.parent() {
+                    Some(p) => search = p.to_path_buf(),
+                    None => break,
+                }
+            }
+        }
+    }
+
+    // 3. Fallback: current_dir (dev mode)
+    let mut current =
         std::env::current_dir().map_err(|error| format!("Cannot resolve current_dir: {error}"))?;
+
+    if current.ends_with("src-tauri") {
+        if let Some(parent) = current.parent() {
+            current = parent.to_path_buf();
+        }
+    }
+
     Ok(current)
 }
 
@@ -1035,6 +1083,606 @@ async fn open_path(request: OpenPathRequest) -> Result<Value, String> {
     }
 }
 
+// ── Missing Pipeline Request Structs ─────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TranscribeRequest {
+    project_id: String,
+    input: String,
+    mode: Option<String>,
+    language: Option<String>,
+    source_ref: Option<String>,
+    fallback_policy: Option<String>,
+    transcription_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CutPlanRequest {
+    project_id: String,
+    input: String,
+    source_ref: Option<String>,
+    mode: Option<String>,
+    #[allow(dead_code)]
+    fps: Option<u32>,
+    llm_provider: Option<String>,
+    llm_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OverlayPlanChunkRequest {
+    project_id: String,
+    chunk_index: Option<u32>,
+    chunk_start_us: Option<u64>,
+    chunk_end_us: Option<u64>,
+    mode: Option<String>,
+    llm_provider: Option<String>,
+    llm_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FetchAssetRequest {
+    project_id: String,
+    query: String,
+    kind: Option<String>,
+    provider: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgenticEditRequest {
+    project_id: String,
+    input: String,
+    language: Option<String>,
+    fps: Option<u32>,
+    mode: Option<String>,
+    source_ref: Option<String>,
+    fetch_external: Option<bool>,
+    llm_provider: Option<String>,
+    llm_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportFcpxmlRequest {
+    project_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveAiConfigRequest {
+    key: Option<String>,
+    value: Option<String>,
+    keys: Option<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OllamaPullRequest {
+    model: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectDataRequest {
+    project_id: String,
+    file_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveProjectDataRequest {
+    project_id: String,
+    file_name: String,
+    data: Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveProjectStateRequest {
+    project_id: String,
+    state: Option<Value>,
+    timeline: Option<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadProjectRequest {
+    project_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgenticProgressRequest {
+    project_id: String,
+}
+
+// ── Pipeline: Standalone Transcription ──────────────────────────────────
+
+#[tauri::command]
+async fn pipeline_transcribe(request: TranscribeRequest) -> Result<Value, String> {
+    let script = script_path("scripts/transcribe_only.mjs")?;
+    let root = workspace_root()?;
+    let p_dir = root.join("desktop").join("data").join(&request.project_id);
+    let mode = request.mode.unwrap_or_else(|| "hybrid".to_string());
+    let language = request.language.unwrap_or_else(|| "en".to_string());
+    let source_ref = request.source_ref.unwrap_or_else(|| "source-video".to_string());
+
+    let mut args = vec![
+        "--project-id".to_string(), request.project_id.clone(),
+        "--project-dir".to_string(), p_dir.to_string_lossy().to_string(),
+        "--input".to_string(), request.input.clone(),
+        "--mode".to_string(), mode,
+        "--language".to_string(), language,
+        "--source-ref".to_string(), source_ref,
+    ];
+    if let Some(fp) = request.fallback_policy { if !fp.is_empty() { args.push("--fallback-policy".to_string()); args.push(fp); } }
+    if let Some(tm) = request.transcription_model { if !tm.is_empty() { args.push("--transcription-model".to_string()); args.push(tm); } }
+
+    let pid = request.project_id.clone();
+    let _ = tauri::async_runtime::spawn_blocking({
+        let pid = pid.clone();
+        move || update_project_status(&pid, "TRANSCRIBING")
+    }).await;
+
+    let raw = tauri::async_runtime::spawn_blocking(move || run_node_script(&script, &args))
+        .await.map_err(|e| format!("Task join error: {e}"))??;
+
+    let _ = tauri::async_runtime::spawn_blocking({
+        let pid2 = pid.clone();
+        move || update_project_status(&pid2, "TRANSCRIPT_READY")
+    }).await;
+
+    serde_json::from_str::<Value>(&raw).map_err(|e| format!("Invalid JSON: {e}"))
+}
+
+// ── Pipeline: Standalone Cut Planning ───────────────────────────────────
+
+#[tauri::command]
+async fn pipeline_cut_plan(request: CutPlanRequest) -> Result<Value, String> {
+    let script = script_path("scripts/cut_plan_only.mjs")?;
+    let root = workspace_root()?;
+    let p_dir = root.join("desktop").join("data").join(&request.project_id);
+    let source_ref = request.source_ref.unwrap_or_else(|| "source-video".to_string());
+    let mode = request.mode.unwrap_or_else(|| "heuristic".to_string());
+
+    let mut args = vec![
+        "--project-id".to_string(), request.project_id.clone(),
+        "--project-dir".to_string(), p_dir.to_string_lossy().to_string(),
+        "--input".to_string(), request.input.clone(),
+        "--source-ref".to_string(), source_ref,
+        "--mode".to_string(), mode,
+    ];
+    if let Some(lp) = request.llm_provider { if !lp.is_empty() { args.push("--llm-provider".to_string()); args.push(lp); } }
+    if let Some(lm) = request.llm_model { if !lm.is_empty() { args.push("--llm-model".to_string()); args.push(lm); } }
+
+    let pid = request.project_id.clone();
+    let _ = tauri::async_runtime::spawn_blocking({
+        let pid = pid.clone();
+        move || update_project_status(&pid, "PLANNING_CUTS")
+    }).await;
+
+    let raw = tauri::async_runtime::spawn_blocking(move || run_node_script(&script, &args))
+        .await.map_err(|e| format!("Task join error: {e}"))??;
+
+    let _ = tauri::async_runtime::spawn_blocking({
+        let pid2 = pid.clone();
+        move || update_project_status(&pid2, "CUTS_READY")
+    }).await;
+
+    serde_json::from_str::<Value>(&raw).map_err(|e| format!("Invalid JSON: {e}"))
+}
+
+// ── Pipeline: Chunk Overlay Planning ────────────────────────────────────
+
+#[tauri::command]
+async fn pipeline_overlay_plan_chunk(request: OverlayPlanChunkRequest) -> Result<Value, String> {
+    let script = script_path("scripts/overlay_plan_chunk.mjs")?;
+    let root = workspace_root()?;
+    let p_dir = root.join("desktop").join("data").join(&request.project_id);
+    let chunk_index = request.chunk_index.unwrap_or(0);
+    let chunk_start = request.chunk_start_us.unwrap_or(0);
+    let chunk_end = request.chunk_end_us.unwrap_or(60_000_000);
+    let mode = request.mode.unwrap_or_else(|| "auto".to_string());
+
+    let mut args = vec![
+        "--project-id".to_string(), request.project_id.clone(),
+        "--project-dir".to_string(), p_dir.to_string_lossy().to_string(),
+        "--chunk-index".to_string(), chunk_index.to_string(),
+        "--chunk-start-us".to_string(), chunk_start.to_string(),
+        "--chunk-end-us".to_string(), chunk_end.to_string(),
+        "--mode".to_string(), mode,
+    ];
+    if let Some(lp) = request.llm_provider { if !lp.is_empty() { args.push("--llm-provider".to_string()); args.push(lp); } }
+    if let Some(lm) = request.llm_model { if !lm.is_empty() { args.push("--llm-model".to_string()); args.push(lm); } }
+
+    let raw = tauri::async_runtime::spawn_blocking(move || run_node_script(&script, &args))
+        .await.map_err(|e| format!("Task join error: {e}"))??;
+
+    serde_json::from_str::<Value>(&raw).map_err(|e| format!("Invalid JSON: {e}"))
+}
+
+// ── Pipeline: Fetch Free Asset ──────────────────────────────────────────
+
+#[tauri::command]
+async fn pipeline_fetch_asset(request: FetchAssetRequest) -> Result<Value, String> {
+    let script = script_path("scripts/fetch_free_assets.mjs")?;
+    let root = workspace_root()?;
+    let p_dir = root.join("desktop").join("data").join(&request.project_id);
+    let kind = request.kind.unwrap_or_else(|| "image".to_string());
+    let provider = request.provider.unwrap_or_else(|| "pexels".to_string());
+
+    let args = vec![
+        "--project-id".to_string(), request.project_id.clone(),
+        "--project-dir".to_string(), p_dir.to_string_lossy().to_string(),
+        "--query".to_string(), request.query.clone(),
+        "--kind".to_string(), kind,
+        "--provider".to_string(), provider,
+    ];
+
+    let raw = tauri::async_runtime::spawn_blocking(move || run_node_script(&script, &args))
+        .await.map_err(|e| format!("Task join error: {e}"))??;
+
+    serde_json::from_str::<Value>(&raw).map_err(|e| format!("Invalid JSON: {e}"))
+}
+
+// ── Agentic Edit: full AI-driven pipeline ───────────────────────────────
+
+#[tauri::command]
+async fn agentic_edit(request: AgenticEditRequest) -> Result<Value, String> {
+    let script = script_path("scripts/agentic_editing_pipeline.mjs")?;
+    let root = workspace_root()?;
+    let p_dir = root.join("desktop").join("data").join(&request.project_id);
+    let language = request.language.unwrap_or_else(|| "hi".to_string());
+    let fps = request.fps.unwrap_or(30);
+    let mode = request.mode.unwrap_or_else(|| "hybrid".to_string());
+    let source_ref = request.source_ref.unwrap_or_else(|| "source-video".to_string());
+    let fetch_external = if request.fetch_external.unwrap_or(true) { "true" } else { "false" };
+
+    let mut args = vec![
+        "--project-id".to_string(), request.project_id.clone(),
+        "--project-dir".to_string(), p_dir.to_string_lossy().to_string(),
+        "--input".to_string(), request.input.clone(),
+        "--language".to_string(), language,
+        "--fps".to_string(), fps.to_string(),
+        "--mode".to_string(), mode,
+        "--source-ref".to_string(), source_ref,
+        "--fetch-external".to_string(), fetch_external.to_string(),
+    ];
+    if let Some(lp) = request.llm_provider { if !lp.is_empty() { args.push("--llm-provider".to_string()); args.push(lp); } }
+    if let Some(lm) = request.llm_model { if !lm.is_empty() { args.push("--llm-model".to_string()); args.push(lm); } }
+
+    let pid = request.project_id.clone();
+    let _ = tauri::async_runtime::spawn_blocking({
+        let pid = pid.clone();
+        move || update_project_status(&pid, "AGENTIC_EDIT_IN_PROGRESS")
+    }).await;
+
+    let raw = tauri::async_runtime::spawn_blocking(move || run_node_script(&script, &args))
+        .await.map_err(|e| format!("Task join error: {e}"))??;
+
+    let _ = tauri::async_runtime::spawn_blocking({
+        let pid2 = pid.clone();
+        move || update_project_status(&pid2, "AGENTIC_EDIT_DONE")
+    }).await;
+
+    serde_json::from_str::<Value>(&raw).map_err(|e| format!("Invalid JSON: {e}"))
+}
+
+// ── Agentic Edit Progress ───────────────────────────────────────────────
+
+#[tauri::command]
+async fn agentic_edit_progress(request: AgenticProgressRequest) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = workspace_root()?;
+        let progress_file = root.join("desktop").join("data").join(&request.project_id).join("agent_state.json");
+        if !progress_file.exists() {
+            return Ok(serde_json::json!({ "status": "idle", "percent": 0 }));
+        }
+        let raw = fs::read_to_string(&progress_file)
+            .map_err(|e| format!("Failed reading agent_state: {e}"))?;
+        serde_json::from_str::<Value>(&raw).map_err(|e| format!("Invalid JSON: {e}"))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
+}
+
+// ── Export FCPXML ───────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn export_fcpxml(request: ExportFcpxmlRequest) -> Result<Value, String> {
+    let script = script_path("scripts/export_fcpxml.mjs")?;
+    let root = workspace_root()?;
+    let p_dir = root.join("desktop").join("data").join(&request.project_id);
+    let output = p_dir.join("project.fcpxml");
+
+    let args = vec![
+        "--project-id".to_string(), request.project_id.clone(),
+        "--project-dir".to_string(), p_dir.to_string_lossy().to_string(),
+        "--output".to_string(), output.to_string_lossy().to_string(),
+    ];
+
+    let _ = tauri::async_runtime::spawn_blocking(move || run_node_script(&script, &args))
+        .await.map_err(|e| format!("Task join error: {e}"))??;
+
+    Ok(serde_json::json!({ "ok": true, "path": output.to_string_lossy() }))
+}
+
+// ── AI Config: Get/Save API Keys ────────────────────────────────────────
+
+#[tauri::command]
+async fn ai_config_get() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let root = workspace_root()?;
+        let config_path = root.join("desktop").join("data").join("ai_config.json");
+        if !config_path.exists() {
+            return Ok(serde_json::json!({}));
+        }
+        let raw = fs::read_to_string(&config_path)
+            .map_err(|e| format!("Failed reading ai_config: {e}"))?;
+        serde_json::from_str::<Value>(&raw).map_err(|e| format!("Invalid JSON: {e}"))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
+}
+
+#[tauri::command]
+async fn ai_config_save(request: SaveAiConfigRequest) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = workspace_root()?;
+        let config_path = root.join("desktop").join("data").join("ai_config.json");
+        fs::create_dir_all(config_path.parent().unwrap())
+            .map_err(|e| format!("Failed creating dir: {e}"))?;
+
+        // Load existing config
+        let mut config: serde_json::Map<String, Value> = if config_path.exists() {
+            let raw = fs::read_to_string(&config_path).unwrap_or_else(|_| "{}".to_string());
+            serde_json::from_str(&raw).unwrap_or_default()
+        } else {
+            serde_json::Map::new()
+        };
+
+        // Apply updates
+        if let Some(keys) = request.keys {
+            for (k, v) in keys {
+                if v.is_empty() {
+                    config.remove(&k);
+                } else {
+                    config.insert(k, Value::String(v));
+                }
+            }
+        } else if let (Some(key), Some(value)) = (request.key, request.value) {
+            if value.is_empty() {
+                config.remove(&key);
+            } else {
+                config.insert(key, Value::String(value));
+            }
+        }
+
+        let serialized = serde_json::to_string_pretty(&config)
+            .map_err(|e| format!("Serialize error: {e}"))?;
+        fs::write(&config_path, format!("{serialized}\n"))
+            .map_err(|e| format!("Failed writing ai_config: {e}"))?;
+
+        // Also set env vars for current process
+        for (k, v) in &config {
+            if let Some(s) = v.as_str() {
+                std::env::set_var(k, s);
+            }
+        }
+
+        Ok(serde_json::json!({ "ok": true, "keys": config.len() }))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
+}
+
+// ── AI Provider Catalog ─────────────────────────────────────────────────
+
+#[tauri::command]
+async fn ai_providers() -> Result<Value, String> {
+    let script = script_path("scripts/lib/llm_provider.mjs")?;
+    // Use a small inline script to import and dump the catalog
+    let root = workspace_root()?;
+    let inline = format!(
+        "import('{}').then(m => console.log(JSON.stringify(m.getProviderCatalog())))",
+        script.to_string_lossy().replace('\\', "/")
+    );
+    let node = node_binary();
+    let output = tauri::async_runtime::spawn_blocking(move || {
+        let out = Command::new(&node)
+            .args(["--input-type=module", "-e", &inline])
+            .current_dir(&root)
+            .output()
+            .map_err(|e| format!("Failed to run node: {e}"))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            return Err(format!("Node error: {}", stderr.chars().take(300).collect::<String>()));
+        }
+        Ok(String::from_utf8(out.stdout).unwrap_or_default().trim().to_string())
+    }).await.map_err(|e| format!("Task join error: {e}"))??;
+
+    serde_json::from_str::<Value>(&output).map_err(|e| format!("Invalid JSON: {e}"))
+}
+
+// ── Ollama: List Models ─────────────────────────────────────────────────
+
+#[tauri::command]
+async fn ollama_list_models() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let output = Command::new("ollama")
+            .arg("list")
+            .output()
+            .map_err(|e| format!("Failed to run ollama: {e}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let models: Vec<Value> = stdout.lines().skip(1).filter_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.is_empty() { return None; }
+            Some(serde_json::json!({
+                "name": parts[0],
+                "size": parts.get(2).unwrap_or(&""),
+            }))
+        }).collect();
+        Ok(serde_json::json!({ "models": models }))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
+}
+
+// ── Ollama: Pull Model ──────────────────────────────────────────────────
+
+#[tauri::command]
+async fn ollama_pull_model(request: OllamaPullRequest) -> Result<Value, String> {
+    let model = request.model.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = Command::new("ollama")
+            .args(["pull", &model])
+            .output()
+            .map_err(|e| format!("Failed to run ollama pull: {e}"))?;
+        if output.status.success() {
+            Ok(serde_json::json!({ "ok": true, "model": model }))
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("ollama pull failed: {}", stderr.chars().take(300).collect::<String>()))
+        }
+    }).await.map_err(|e| format!("Task join error: {e}"))?
+}
+
+// ── Project Data: Read/Write JSON ───────────────────────────────────────
+
+#[tauri::command]
+async fn get_project_data(request: ProjectDataRequest) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = workspace_root()?;
+        let file_path = root.join("desktop").join("data").join(&request.project_id).join(&request.file_name);
+        if !file_path.exists() {
+            return Err("Report not found".to_string());
+        }
+        let raw = fs::read_to_string(&file_path)
+            .map_err(|e| format!("Failed reading: {e}"))?;
+        serde_json::from_str::<Value>(&raw).map_err(|e| format!("Invalid JSON: {e}"))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
+}
+
+#[tauri::command]
+async fn save_project_data(request: SaveProjectDataRequest) -> Result<Value, String> {
+    let allowed = ["chunk_review_decisions.json"];
+    if !allowed.contains(&request.file_name.as_str()) {
+        return Err(format!("Writing to {} is not allowed", request.file_name));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = workspace_root()?;
+        let file_path = root.join("desktop").join("data").join(&request.project_id).join(&request.file_name);
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("Failed creating dir: {e}"))?;
+        }
+        let serialized = serde_json::to_string_pretty(&request.data)
+            .map_err(|e| format!("Serialize error: {e}"))?;
+        fs::write(&file_path, format!("{serialized}\n"))
+            .map_err(|e| format!("Failed writing: {e}"))?;
+        Ok(serde_json::json!({ "ok": true }))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
+}
+
+// ── Save/Load Project State ─────────────────────────────────────────────
+
+#[tauri::command]
+async fn save_project_state(request: SaveProjectStateRequest) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = workspace_root()?;
+        let project_dir = root.join("desktop").join("data").join(&request.project_id);
+        fs::create_dir_all(&project_dir).map_err(|e| format!("Failed creating dir: {e}"))?;
+
+        if let Some(state) = &request.state {
+            let state_path = project_dir.join("state.json");
+            let serialized = serde_json::to_string_pretty(state)
+                .map_err(|e| format!("Serialize error: {e}"))?;
+            fs::write(&state_path, format!("{serialized}\n"))
+                .map_err(|e| format!("Failed writing state: {e}"))?;
+        }
+
+        if let Some(timeline) = &request.timeline {
+            let timeline_path = project_dir.join("timeline.json");
+            let serialized = serde_json::to_string_pretty(timeline)
+                .map_err(|e| format!("Serialize error: {e}"))?;
+            fs::write(&timeline_path, format!("{serialized}\n"))
+                .map_err(|e| format!("Failed writing timeline: {e}"))?;
+        }
+
+        // Update updatedAt in projects.json
+        let mut projects = read_projects()?;
+        let now = now_iso();
+        for project in &mut projects {
+            if project.id == request.project_id {
+                project.updated_at = now.clone();
+                break;
+            }
+        }
+        write_projects(&projects)?;
+
+        Ok(serde_json::json!({ "ok": true }))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
+}
+
+#[tauri::command]
+async fn load_project(request: LoadProjectRequest) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = workspace_root()?;
+        let project_dir = root.join("desktop").join("data").join(&request.project_id);
+
+        let state = {
+            let state_path = project_dir.join("state.json");
+            if state_path.exists() {
+                let raw = fs::read_to_string(&state_path)
+                    .map_err(|e| format!("Failed reading state: {e}"))?;
+                serde_json::from_str::<Value>(&raw).ok()
+            } else {
+                None
+            }
+        };
+
+        let timeline = {
+            let tl_path = project_dir.join("timeline.json");
+            if tl_path.exists() {
+                let raw = fs::read_to_string(&tl_path)
+                    .map_err(|e| format!("Failed reading timeline: {e}"))?;
+                serde_json::from_str::<Value>(&raw).ok()
+            } else {
+                None
+            }
+        };
+
+        let projects = read_projects()?;
+        let project = projects.into_iter().find(|p| p.id == request.project_id);
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "state": state,
+            "timeline": timeline,
+            "project": project
+        }))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
+}
+
+// ── Auto Setup (callable from frontend) ─────────────────────────────────
+
+#[tauri::command]
+async fn run_setup() -> Result<Value, String> {
+    let script = script_path("scripts/auto_setup.mjs")?;
+    let root = workspace_root()?;
+    let node = node_binary();
+
+    let output = tauri::async_runtime::spawn_blocking(move || {
+        let out = Command::new(&node)
+            .arg(&script)
+            .current_dir(&root)
+            .output()
+            .map_err(|e| format!("Failed to run auto_setup: {e}"))?;
+        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+        Ok::<(bool, String), String>((out.status.success(), stderr))
+    }).await.map_err(|e| format!("Task join error: {e}"))??;
+
+    Ok(serde_json::json!({
+        "ok": output.0,
+        "log": output.1
+    }))
+}
+
 #[tauri::command]
 fn app_metadata() -> Value {
     serde_json::json!({
@@ -1043,17 +1691,82 @@ fn app_metadata() -> Value {
     })
 }
 
+fn run_auto_setup(root: &Path) {
+    let node = node_binary();
+    let setup_script = root.join("scripts").join("auto_setup.mjs");
+    if !setup_script.exists() {
+        eprintln!("[Tauri] auto_setup.mjs not found, skipping auto-setup");
+        return;
+    }
+    eprintln!("[Tauri] Running auto-setup...");
+    match Command::new(&node)
+        .arg(&setup_script)
+        .current_dir(root)
+        .output()
+    {
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.is_empty() {
+                eprintln!("{}", stderr.trim_end());
+            }
+            if output.status.success() {
+                eprintln!("[Tauri] Auto-setup completed");
+            } else {
+                eprintln!("[Tauri] Auto-setup finished with warnings");
+            }
+        }
+        Err(e) => {
+            eprintln!("[Tauri] Auto-setup failed to run: {e}");
+        }
+    }
+}
+
+fn ensure_npm_modules(root: &Path) {
+    let node_modules = root.join("node_modules");
+    if node_modules.exists() {
+        return;
+    }
+    eprintln!("[Tauri] node_modules not found, running npm install...");
+    match Command::new("npm")
+        .args(["install", "--prefer-offline", "--no-audit", "--no-fund"])
+        .current_dir(root)
+        .output()
+    {
+        Ok(output) => {
+            if output.status.success() {
+                eprintln!("[Tauri] npm install completed");
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!("[Tauri] npm install failed: {}", stderr.chars().take(200).collect::<String>());
+            }
+        }
+        Err(e) => {
+            eprintln!("[Tauri] npm install failed to run: {e}");
+        }
+    }
+}
+
 fn start_backend_server() -> Option<std::process::Child> {
     let root = workspace_root().ok()?;
+    eprintln!("[Tauri] Workspace root: {:?}", root);
+
+    // Ensure node_modules exist (critical for .app first launch)
+    ensure_npm_modules(&root);
+
+    // Run auto-setup to install ffmpeg, Ollama, etc.
+    run_auto_setup(&root);
+
     let server_script = root.join("desktop").join("backend").join("server.mjs");
     if !server_script.exists() {
         eprintln!("[Tauri] Backend script not found: {:?}", server_script);
         return None;
     }
     let node = node_binary();
+    eprintln!("[Tauri] Starting backend: {} {:?}", node, server_script);
     match Command::new(&node)
         .arg(&server_script)
         .current_dir(&root)
+        .env("LAPAAS_WORKSPACE_ROOT", &root)
         .spawn()
     {
         Ok(child) => {
@@ -1095,7 +1808,30 @@ fn main() {
             get_render_history,
             get_project_telemetry,
             save_timeline,
-            app_metadata
+            app_metadata,
+            // Pipeline commands
+            pipeline_transcribe,
+            pipeline_cut_plan,
+            pipeline_overlay_plan_chunk,
+            pipeline_fetch_asset,
+            agentic_edit,
+            agentic_edit_progress,
+            export_fcpxml,
+            // AI config & providers
+            ai_config_get,
+            ai_config_save,
+            ai_providers,
+            // Ollama management
+            ollama_list_models,
+            ollama_pull_model,
+            // Project data (QC reports, review decisions)
+            get_project_data,
+            save_project_data,
+            // Project save/load
+            save_project_state,
+            load_project,
+            // Auto-setup
+            run_setup
         ])
         .on_window_event(move |_window, event| {
             if let tauri::WindowEvent::Destroyed = event {

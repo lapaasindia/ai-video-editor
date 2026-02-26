@@ -65,9 +65,10 @@ export const PROVIDER_CATALOG = {
         type: 'cloud',
         envKey: 'OPENAI_API_KEY',
         models: [
-            { id: 'gpt-4o', label: 'GPT-4o (Flagship)', default: true },
+            { id: 'gpt-5-mini', label: 'GPT-5 Mini (Cheap, recommended)', default: true },
+            { id: 'gpt-4o', label: 'GPT-4o (Flagship)' },
             { id: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast, affordable)' },
-            { id: 'gpt-4.1', label: 'GPT-4.1 (Latest)' },
+            { id: 'gpt-4.1', label: 'GPT-4.1' },
             { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
             { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano (Fastest)' },
             { id: 'o3', label: 'o3 (Reasoning)' },
@@ -153,6 +154,17 @@ export function isProviderAvailable(provider) {
     if (catalog.type === 'local') return true; // Assumed available if Ollama running
     if (catalog.type === 'local-cli') return true; // Codex uses ChatGPT login (no API key needed)
     return Boolean(process.env[catalog.envKey]);
+}
+
+// Check if Ollama is actually running and responsive
+let _ollamaRunning = null;
+export async function isOllamaRunning() {
+    if (_ollamaRunning !== null) return _ollamaRunning;
+    try {
+        const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) });
+        _ollamaRunning = resp.ok;
+    } catch { _ollamaRunning = false; }
+    return _ollamaRunning;
 }
 
 // ── LLM Execution ───────────────────────────────────────────────────────────
@@ -519,7 +531,7 @@ export function extractJsonFromLLMOutput(text) {
 
 /**
  * Auto-detect the best available LLM provider.
- * Priority: Codex CLI → OpenAI → Google → Anthropic → Ollama (local)
+ * Priority: Codex CLI (gpt-5.2) → OpenAI gpt-5-mini → Google → Anthropic → Ollama
  *
  * @returns {Promise<{ provider: string, model: string }>}
  */
@@ -532,32 +544,38 @@ export async function detectBestLLM() {
         return { provider, model };
     }
 
-    // 1. OpenAI API directly (if key set)
-    if (process.env.OPENAI_API_KEY) {
-        console.error('[LLM] Using OpenAI API (gpt-4o-mini)');
-        return { provider: 'openai', model: 'gpt-4o-mini' };
-    }
-
-    // 2. Google Gemini
-    if (process.env.GOOGLE_API_KEY) {
-        console.error('[LLM] Using Google Gemini (gemini-2.0-flash)');
-        return { provider: 'google', model: 'gemini-2.0-flash' };
-    }
-
-    // 3. Anthropic Claude
-    if (process.env.ANTHROPIC_API_KEY) {
-        console.error('[LLM] Using Anthropic Claude (claude-3-5-haiku-20241022)');
-        return { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' };
-    }
-
-    // 4. Codex CLI — uses ChatGPT login, no API key needed
+    // 1. Codex CLI — uses ChatGPT login, no API key needed (best quality)
     if (await isCodexAvailable()) {
         console.error('[LLM] Using Codex CLI (gpt-5.2 via ChatGPT login)');
         return { provider: 'codex', model: 'gpt-5.2' };
     }
 
-    // 5. Ollama local — always available as last resort
-    console.error('[LLM] Using Ollama local (qwen3:1.7b)');
+    // 2. OpenAI API — gpt-5-mini is cheap and high quality
+    if (process.env.OPENAI_API_KEY) {
+        console.error('[LLM] Using OpenAI API (gpt-5-mini)');
+        return { provider: 'openai', model: 'gpt-5-mini' };
+    }
+
+    // 3. Google Gemini
+    if (process.env.GOOGLE_API_KEY) {
+        console.error('[LLM] Using Google Gemini (gemini-2.0-flash)');
+        return { provider: 'google', model: 'gemini-2.0-flash' };
+    }
+
+    // 4. Anthropic Claude
+    if (process.env.ANTHROPIC_API_KEY) {
+        console.error('[LLM] Using Anthropic Claude (claude-3-5-haiku-20241022)');
+        return { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' };
+    }
+
+    // 5. Ollama local — free fallback
+    if (await isOllamaRunning()) {
+        console.error('[LLM] Using Ollama local (qwen3:1.7b)');
+        return { provider: 'ollama', model: 'qwen3:1.7b' };
+    }
+
+    // 6. Ollama fallback (even if not confirmed running, try it)
+    console.error('[LLM] Falling back to Ollama local (qwen3:1.7b)');
     return { provider: 'ollama', model: 'qwen3:1.7b' };
 }
 

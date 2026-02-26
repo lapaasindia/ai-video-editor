@@ -39,3 +39,5 @@ src-tauri/binaries/
 desktop/data/*
 !desktop/data/.gitkeep
 !desktop/data/README.md
+
+build
